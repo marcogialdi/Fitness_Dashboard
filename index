@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lean Bulk Dashboard - Marco</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --text-color: #f8fafc;
+            --accent-blue: #38bdf8;
+            --accent-green: #4ade80;
+            --accent-orange: #fb923c;
+            --accent-purple: #c084fc;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 2rem;
+            color: var(--accent-blue);
+        }
+        .header p {
+            color: #94a3b8;
+            margin-top: 5px;
+        }
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        .kpi-card {
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #334155;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        .kpi-title {
+            font-size: 0.85rem;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .kpi-value {
+            font-size: 1.8rem;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+        }
+        .chart-card {
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #334155;
+        }
+        @media (max-width: 600px) {
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>📊 Lean Bulk Dashboard</h1>
+        <p>Monitoraggio Composizione Corporea e Progresso BIA</p>
+    </div>
+
+    <div class="kpi-grid">
+        <div class="kpi-card">
+            <div class="kpi-title">Peso Attuale</div>
+            <div class="kpi-value" style="color: var(--accent-blue);">78.17 kg</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-title">Massa Muscolare</div>
+            <div class="kpi-value" style="color: var(--accent-green);">61.80 kg</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-title">Massa Grassa (BF)</div>
+            <div class="kpi-value" style="color: var(--accent-orange);">15.3%</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-title">Metabolismo Basale</div>
+            <div class="kpi-value" style="color: var(--accent-purple);">1801 kcal</div>
+        </div>
+    </div>
+
+    <div class="charts-grid">
+        <div class="chart-card">
+            <canvas id="weightMuscleChart"></canvas>
+        </div>
+        <div class="chart-card">
+            <canvas id="bfBmrChart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        const biaData = [{"date": "2025-11-23", "weight": 73.79, "bf": 14.3, "muscle": 59.1, "bmr": 1737, "sub_fat": 10.3, "water": 62.9}, {"date": "2026-09-12", "weight": 78.08, "bf": 16.2, "muscle": 61.1, "bmr": 1784, "sub_fat": 11.6, "water": 61.5}, {"date": "2026-09-18", "weight": 78.16, "bf": 15.5, "muscle": 61.7, "bmr": 1796, "sub_fat": 11.1, "water": 62.0}, {"date": "2026-09-26", "weight": 78.74, "bf": 15.5, "muscle": 62.0, "bmr": 1807, "sub_fat": 11.1, "water": 61.9}, {"date": "2026-10-03", "weight": 78.17, "bf": 15.3, "muscle": 61.8, "bmr": 1801, "sub_fat": 11.0, "water": 62.1}];
+        const labels = biaData.map(d => d.date);
+
+        new Chart(document.getElementById('weightMuscleChart'), {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Peso Corporeo (kg)',
+                        data: biaData.map(d => d.weight),
+                        borderColor: '#38bdf8',
+                        backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                        tension: 0.3,
+                        fill: true
+                    },
+                    {
+                        label: 'Massa Muscolare (kg)',
+                        data: biaData.map(d => d.muscle),
+                        borderColor: '#4ade80',
+                        backgroundColor: 'rgba(74, 222, 128, 0.1)',
+                        tension: 0.3,
+                        fill: true
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: { display: true, text: 'Evoluzione Peso e Massa Muscolare', color: '#f8fafc' },
+                    legend: { labels: { color: '#f8fafc' } }
+                },
+                scales: {
+                    x: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } },
+                    y: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } }
+                }
+            }
+        });
+
+        new Chart(document.getElementById('bfBmrChart'), {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Massa Grassa %',
+                        data: biaData.map(d => d.bf),
+                        borderColor: '#fb923c',
+                        yAxisID: 'y_bf',
+                        tension: 0.3
+                    },
+                    {
+                        label: 'BMR (kcal)',
+                        data: biaData.map(d => d.bmr),
+                        borderColor: '#c084fc',
+                        yAxisID: 'y_bmr',
+                        tension: 0.3
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: { display: true, text: 'Massa Grassa (%) e Metabolismo Basale (kcal)', color: '#f8fafc' },
+                    legend: { labels: { color: '#f8fafc' } }
+                },
+                scales: {
+                    x: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } },
+                    y_bf: {
+                        type: 'linear',
+                        position: 'left',
+                        ticks: { color: '#fb923c' },
+                        grid: { color: '#334155' }
+                    },
+                    y_bmr: {
+                        type: 'linear',
+                        position: 'right',
+                        ticks: { color: '#c084fc' },
+                        grid: { drawOnChartArea: false }
+                    }
+                }
+            }
+        });
+    </script>
+
+</body>
+</html>
