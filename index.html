@@ -239,9 +239,9 @@
                             loadDashboardData();
                         }
                     }
-                    // B. IMPORT BIA (Formato Nativo 43 Colonne)
+                    // B. IMPORT BIA (Formato Nativo con De-duplicazione in Memoria)
                     else if (headers.includes('Time') && headers.includes('Weight')) {
-                        const formattedBIA = data.map(r => {
+                        const rawBIA = data.map(r => {
                             const parsedDate = r['Time'] ? new Date(r['Time']).toISOString() : null;
                             return {
                                 measurement_time: parsedDate,
@@ -259,13 +259,25 @@
                                 body_score: r['Body Score'] ? parseInt(r['Body Score']) : null
                             };
                         }).filter(r => r.measurement_time);
-
+                    
+                        // 🔍 DE-DUPLICAZIONE IN MEMORIA: mantiene solo una riga per ogni orario univoco
+                        const uniqueBIAMap = new Map();
+                        rawBIA.forEach(item => {
+                            uniqueBIAMap.set(item.measurement_time, item);
+                        });
+                        const formattedBIA = Array.from(uniqueBIAMap.values());
+                    
+                        // Inserimento / Aggiornamento sicuro su Supabase
                         const { error } = await supabaseClient
                             .from('bia_measurements')
                             .upsert(formattedBIA, { onConflict: 'measurement_time' });
-
-                        if (error) alert("❌ Errore BIA: " + error.message);
-                        else { alert("✅ Misurazioni BIA aggiornate!"); loadDashboardData(); }
+                    
+                        if (error) {
+                            alert("❌ Errore BIA: " + error.message);
+                        } else {
+                            alert("✅ Misurazioni BIA caricate e sincronizzate con successo!");
+                            loadDashboardData();
+                        }
                     }
                     // C. IMPORT RINGCONN
                     else if (headers.includes('label') && headers.includes('sleep_score')) {
