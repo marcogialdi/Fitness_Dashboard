@@ -1,10 +1,12 @@
-<!DOCTYPE html>
 <html lang="it">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lean Bulk Dashboard - Marco</title>
+    <title>Lean Bulk, Training & RingConn Dashboard - Marco</title>
+    <!-- Chart.js, PapaParse (CSV Parser) & Supabase Client -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         :root {
             --bg-color: #0f172a;
@@ -12,7 +14,10 @@
             --text-color: #f8fafc;
             --accent-blue: #38bdf8;
             --accent-green: #4ade80;
+            --accent-teal: #2dd4bf;
             --accent-orange: #fb923c;
+            --accent-yellow: #facc15;
+            --accent-pink: #ec4899;
             --accent-purple: #c084fc;
         }
         body {
@@ -22,19 +27,44 @@
             margin: 0;
             padding: 20px;
         }
-        .header {
-            text-align: center;
-            margin-bottom: 30px;
+        .header { text-align: center; margin-bottom: 25px; }
+        .header h1 { margin: 0; font-size: 2rem; color: var(--accent-blue); }
+        .header p { color: #94a3b8; margin-top: 5px; }
+
+        .toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--card-bg);
+            padding: 15px 20px;
+            border-radius: 12px;
+            border: 1px solid #334155;
+            margin-bottom: 25px;
+            flex-wrap: wrap;
+            gap: 15px;
         }
-        .header h1 {
-            margin: 0;
-            font-size: 2rem;
-            color: var(--accent-blue);
-        }
-        .header p {
+        .btn-action {
+            background: #0f172a;
+            border: 1px solid #334155;
             color: #94a3b8;
-            margin-top: 5px;
+            padding: 10px 18px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: all 0.2s ease;
         }
+        .btn-action:hover {
+            background: var(--accent-blue);
+            color: #0f172a;
+            border-color: var(--accent-blue);
+        }
+        .btn-import {
+            background: var(--accent-green) !important;
+            color: #0f172a !important;
+            font-weight: bold;
+        }
+
         .kpi-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -48,21 +78,14 @@
             border: 1px solid #334155;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
-        .kpi-title {
-            font-size: 0.85rem;
-            color: #94a3b8;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-        .kpi-value {
-            font-size: 1.8rem;
-            font-weight: bold;
-            margin-top: 5px;
-        }
+        .kpi-title { font-size: 0.8rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; }
+        .kpi-value { font-size: 1.6rem; font-weight: bold; margin-top: 5px; }
+
         .charts-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
             gap: 20px;
+            margin-bottom: 35px;
         }
         .chart-card {
             background: var(--card-bg);
@@ -70,133 +93,244 @@
             border-radius: 12px;
             border: 1px solid #334155;
         }
-        @media (max-width: 600px) {
-            .charts-grid {
-                grid-template-columns: 1fr;
-            }
+
+        .section-title {
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: var(--accent-teal);
+            margin-bottom: 15px;
         }
+        .table-container {
+            background: var(--card-bg);
+            border: 1px solid #334155;
+            border-radius: 12px;
+            padding: 20px;
+            overflow-x: auto;
+            max-height: 440px;
+            margin-bottom: 35px;
+        }
+        table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem; }
+        th { background-color: #0f172a; color: var(--accent-blue); padding: 12px 14px; position: sticky; top: 0; }
+        td { padding: 10px 14px; border-bottom: 1px solid #334155; color: #cbd5e1; }
     </style>
 </head>
 <body>
 
     <div class="header">
-        <h1>📊 Lean Bulk Dashboard</h1>
-        <p>Monitoraggio Composizione Corporea e Progresso BIA</p>
+        <h1>📊 Lean Bulk, Training & RingConn Dashboard</h1>
+        <p>Infrastruttura Cloud Supabase con Sincronizzazione Dinamica</p>
     </div>
 
-    <div class="kpi-grid">
-        <div class="kpi-card">
-            <div class="kpi-title">Peso Attuale</div>
-            <div class="kpi-value" style="color: var(--accent-blue);">78.17 kg</div>
+    <div class="toolbar">
+        <div>
+            <span style="color: #94a3b8; font-size: 0.9rem;">Sincronizzazione Dati:</span>
+            <strong style="color: var(--accent-green); margin-left: 5px;">Attiva (Cloud DB)</strong>
         </div>
-        <div class="kpi-card">
-            <div class="kpi-title">Massa Muscolare</div>
-            <div class="kpi-value" style="color: var(--accent-green);">61.80 kg</div>
-        </div>
-        <div class="kpi-card">
-            <div class="kpi-title">Massa Grassa (BF)</div>
-            <div class="kpi-value" style="color: var(--accent-orange);">15.3%</div>
-        </div>
-        <div class="kpi-card">
-            <div class="kpi-title">Metabolismo Basale</div>
-            <div class="kpi-value" style="color: var(--accent-purple);">1801 kcal</div>
+        <div>
+            <input type="file" id="csvFileInput" accept=".csv" style="display: none;" onchange="handleCSVImport(event)">
+            <button class="btn-action btn-import" onclick="document.getElementById('csvFileInput').click()">
+                📁 Importa CSV (Hevy / BIA / RingConn)
+            </button>
+            <button class="btn-action" onclick="loadDashboardData()">🔄 Aggiorna</button>
         </div>
     </div>
 
+    <!-- Riquadro KPI Dinamici -->
+    <div class="kpi-grid" id="kpiGridContainer"></div>
+
+    <!-- Grafici Interattivi -->
     <div class="charts-grid">
-        <div class="chart-card">
-            <canvas id="weightMuscleChart"></canvas>
-        </div>
-        <div class="chart-card">
-            <canvas id="bfBmrChart"></canvas>
-        </div>
+        <div class="chart-card"><canvas id="volMuscleChart"></canvas></div>
+        <div class="chart-card"><canvas id="ringconnSleepChart"></canvas></div>
+        <div class="chart-card"><canvas id="lbmChart"></canvas></div>
+        <div class="chart-card"><canvas id="fatChart"></canvas></div>
+    </div>
+
+    <!-- Tabella Allenamenti Aggregati Hevy -->
+    <div class="section-title">🏋️‍♂️ Registro Sessioni di Allenamento (Hevy)</div>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Data</th>
+                    <th>Allenamento</th>
+                    <th>Volume Totale</th>
+                    <th>Serie Totali</th>
+                    <th>Ripetizioni</th>
+                </tr>
+            </thead>
+            <tbody id="workoutTableBody"></tbody>
+        </table>
     </div>
 
     <script>
-        const biaData = [{"date": "2025-11-23", "weight": 73.79, "bf": 14.3, "muscle": 59.1, "bmr": 1737, "sub_fat": 10.3, "water": 62.9}, {"date": "2026-09-12", "weight": 78.08, "bf": 16.2, "muscle": 61.1, "bmr": 1784, "sub_fat": 11.6, "water": 61.5}, {"date": "2026-09-18", "weight": 78.16, "bf": 15.5, "muscle": 61.7, "bmr": 1796, "sub_fat": 11.1, "water": 62.0}, {"date": "2026-09-26", "weight": 78.74, "bf": 15.5, "muscle": 62.0, "bmr": 1807, "sub_fat": 11.1, "water": 61.9}, {"date": "2026-10-03", "weight": 78.17, "bf": 15.3, "muscle": 61.8, "bmr": 1801, "sub_fat": 11.0, "water": 62.1}];
-        const labels = biaData.map(d => d.date);
+        // 1. CONFIGURAZIONE SUPABASE
+        const SUPABASE_URL = "https://onrwqsbzakekauejmjer.supabase.co";
+        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ucndxc2J6YWtla2F1ZWptamVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEyMTE0MjEsImV4cCI6MjEwNjc4NzQyMX0.1mpLds2hTvuaFat18GN7KrtDAOcAb3r6H2TmsA9i8H0";
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        new Chart(document.getElementById('weightMuscleChart'), {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [
-                    {
-                        label: 'Peso Corporeo (kg)',
-                        data: biaData.map(d => d.weight),
-                        borderColor: '#38bdf8',
-                        backgroundColor: 'rgba(56, 189, 248, 0.1)',
-                        tension: 0.3,
-                        fill: true
-                    },
-                    {
-                        label: 'Massa Muscolare (kg)',
-                        data: biaData.map(d => d.muscle),
-                        borderColor: '#4ade80',
-                        backgroundColor: 'rgba(74, 222, 128, 0.1)',
-                        tension: 0.3,
-                        fill: true
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    title: { display: true, text: 'Evoluzione Peso e Massa Muscolare', color: '#f8fafc' },
-                    legend: { labels: { color: '#f8fafc' } }
-                },
-                scales: {
-                    x: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } },
-                    y: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } }
-                }
-            }
-        });
+        // Mappatura Mesi IT -> EN per le date Hevy
+        const mesiIT = { 'gen': 'Jan', 'feb': 'Feb', 'mar': 'Mar', 'apr': 'Apr', 'mag': 'May', 'giu': 'Jun', 'lug': 'Jul', 'ago': 'Aug', 'set': 'Sep', 'ott': 'Oct', 'nov': 'Nov', 'dic': 'Dec' };
 
-        new Chart(document.getElementById('bfBmrChart'), {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [
-                    {
-                        label: 'Massa Grassa %',
-                        data: biaData.map(d => d.bf),
-                        borderColor: '#fb923c',
-                        yAxisID: 'y_bf',
-                        tension: 0.3
-                    },
-                    {
-                        label: 'BMR (kcal)',
-                        data: biaData.map(d => d.bmr),
-                        borderColor: '#c084fc',
-                        yAxisID: 'y_bmr',
-                        tension: 0.3
+        function parseHevyDate(dateStr) {
+            if (!dateStr) return null;
+            let s = String(dateStr);
+            Object.keys(mesiIT).forEach(it => { s = s.replace(it, mesiIT[it]); });
+            const d = new Date(s);
+            return isNaN(d.getTime()) ? null : d.toISOString();
+        }
+
+        // 2. GESTIONE IMPORTAZIONE CSV AUTOMATICA
+        async function handleCSVImport(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            Papa.parse(file, {
+                header: true,
+                skipEmptyLines: true,
+                complete: async function(results) {
+                    const data = results.data;
+                    const headers = results.meta.fields;
+
+                    // A. IMPORT WORKOUTS (Hevy)
+                    if (headers.includes('title') && headers.includes('start_time') && headers.includes('set_index')) {
+                        const formattedWorkouts = data.map(r => ({
+                            title: r.title || null,
+                            start_time: parseHevyDate(r.start_time),
+                            end_time: parseHevyDate(r.end_time),
+                            description: r.description || null,
+                            exercise_title: r.exercise_title,
+                            superset_id: r.superset_id ? parseInt(r.superset_id) : null,
+                            exercise_notes: r.exercise_notes || null,
+                            set_index: parseInt(r.set_index),
+                            set_type: r.set_type || 'normal',
+                            weight_kg: r.weight_kg ? parseFloat(r.weight_kg) : null,
+                            reps: r.reps ? parseInt(r.reps) : null,
+                            distance_km: r.distance_km ? parseFloat(r.distance_km) : null,
+                            duration_seconds: r.duration_seconds ? parseFloat(r.duration_seconds) : null,
+                            rpe: r.rpe ? parseFloat(r.rpe) : null
+                        })).filter(r => r.start_time && r.exercise_title && !isNaN(r.set_index));
+
+                        const { error } = await supabaseClient
+                            .from('workouts')
+                            .upsert(formattedWorkouts, { onConflict: 'start_time,exercise_title,set_index' });
+
+                        if (error) alert("❌ Errore Workouts: " + error.message);
+                        else { alert("✅ Allenamenti Hevy sincronizzati con successo!"); loadDashboardData(); }
                     }
-                ]
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    title: { display: true, text: 'Massa Grassa (%) e Metabolismo Basale (kcal)', color: '#f8fafc' },
-                    legend: { labels: { color: '#f8fafc' } }
-                },
-                scales: {
-                    x: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } },
-                    y_bf: {
-                        type: 'linear',
-                        position: 'left',
-                        ticks: { color: '#fb923c' },
-                        grid: { color: '#334155' }
-                    },
-                    y_bmr: {
-                        type: 'linear',
-                        position: 'right',
-                        ticks: { color: '#c084fc' },
-                        grid: { drawOnChartArea: false }
+                    // B. IMPORT BIA (Formato Nativo 43 Colonne)
+                    else if (headers.includes('Time') && headers.includes('Weight')) {
+                        const formattedBIA = data.map(r => {
+                            const parsedDate = r['Time'] ? new Date(r['Time']).toISOString() : null;
+                            return {
+                                measurement_time: parsedDate,
+                                weight: r['Weight'] ? parseFloat(r['Weight']) : null,
+                                bmi: r['BMI'] ? parseFloat(r['BMI']) : null,
+                                body_fat_percentage: r['Body Fat Percentage'] ? parseFloat(r['Body Fat Percentage']) : null,
+                                subcutaneous_fat: r['Subcutaneous Fat'] ? parseFloat(r['Subcutaneous Fat']) : null,
+                                heart_rate: r['Heart Rate'] ? parseInt(r['Heart Rate']) : null,
+                                visceral_fat: r['Visceral Fat'] ? parseInt(r['Visceral Fat']) : null,
+                                body_water: r['Body Water'] ? parseFloat(r['Body Water']) : null,
+                                muscle_mass: r['Muscle Mass'] ? parseFloat(r['Muscle Mass']) : null,
+                                bone_mass: r['Bone Mass'] ? parseFloat(r['Bone Mass']) : null,
+                                basal_metabolism: r['Basal Metabolism'] ? parseInt(r['Basal Metabolism']) : null,
+                                lean_body_mass: r['Lean Body Mass'] ? parseFloat(r['Lean Body Mass']) : null,
+                                body_score: r['Body Score'] ? parseInt(r['Body Score']) : null
+                            };
+                        }).filter(r => r.measurement_time);
+
+                        const { error } = await supabaseClient
+                            .from('bia_measurements')
+                            .upsert(formattedBIA, { onConflict: 'measurement_time' });
+
+                        if (error) alert("❌ Errore BIA: " + error.message);
+                        else { alert("✅ Misurazioni BIA aggiornate!"); loadDashboardData(); }
+                    }
+                    // C. IMPORT RINGCONN
+                    else if (headers.includes('label') && headers.includes('sleep_score')) {
+                        const { error } = await supabaseClient
+                            .from('ringconn_weekly_reports')
+                            .upsert(data, { onConflict: 'label' });
+
+                        if (error) alert("❌ Errore RingConn: " + error.message);
+                        else { alert("✅ Report RingConn aggiornati!"); loadDashboardData(); }
+                    } else {
+                        alert("⚠️ Formato file non riconosciuto.");
                     }
                 }
+            });
+        }
+
+        // 3. CARICAMENTO DATI DAL DATABASE
+        async function loadDashboardData() {
+            const { data: bia } = await supabaseClient.from('bia_measurements').select('*').order('measurement_time', { ascending: true });
+            const { data: workouts } = await supabaseClient.from('workouts').select('*');
+            const { data: ringconn } = await supabaseClient.from('ringconn_weekly_reports').select('*').order('week_start', { ascending: true });
+
+            if (bia && bia.length) {
+                const latest = bia[bia.length - 1];
+                document.getElementById('kpiGridContainer').innerHTML = `
+                    <div class="kpi-card"><div class="kpi-title">Peso Attuale</div><div class="kpi-value" style="color:var(--accent-blue);">${latest.weight || '-'} kg</div></div>
+                    <div class="kpi-card"><div class="kpi-title">Massa Magra (LBM)</div><div class="kpi-value" style="color:var(--accent-teal);">${latest.lean_body_mass || '-'} kg</div></div>
+                    <div class="kpi-card"><div class="kpi-title">Massa Muscolare</div><div class="kpi-value" style="color:var(--accent-green);">${latest.muscle_mass || '-'} kg</div></div>
+                    <div class="kpi-card"><div class="kpi-title">Massa Grassa</div><div class="kpi-value" style="color:var(--accent-orange);">${latest.body_fat_percentage || '-'} %</div></div>
+                `;
             }
-        });
+            if (workouts && workouts.length) renderWorkoutAggregates(workouts);
+            if (bia || ringconn) renderCharts(bia || [], ringconn || []);
+        }
+
+        // 4. AGGREGAZIONE DATI ALLENAMENTO SERIE -> SESSIONE
+        function renderWorkoutAggregates(rawWorkouts) {
+            const groups = {};
+            rawWorkouts.forEach(w => {
+                const date = w.start_time.split('T')[0];
+                if (!groups[date]) groups[date] = { date, title: w.title || 'Allenamento', volume: 0, sets: 0, reps: 0 };
+                groups[date].volume += (w.weight_kg || 0) * (w.reps || 0);
+                groups[date].sets += 1;
+                groups[date].reps += (w.reps || 0);
+            });
+
+            const tbody = document.getElementById('workoutTableBody');
+            tbody.innerHTML = '';
+            Object.values(groups).sort((a,b) => b.date.localeCompare(a.date)).forEach(w => {
+                tbody.innerHTML += `<tr>
+                    <td style="color:var(--accent-blue); font-weight:bold;">${w.date}</td>
+                    <td>${w.title}</td>
+                    <td style="color:var(--accent-yellow); font-weight:bold;">${w.volume.toLocaleString('it-IT')} kg</td>
+                    <td>${w.sets} serie</td>
+                    <td>${w.reps} reps</td>
+                </tr>`;
+            });
+        }
+
+        // 5. RENDER GRAFICI CHART.JS
+        let chartInstances = {};
+        function renderCharts(bia, ringconn) {
+            Object.values(chartInstances).forEach(chart => chart.destroy());
+
+            // A. Grafico Massa Muscolare
+            chartInstances.muscle = new Chart(document.getElementById('volMuscleChart'), {
+                type: 'line',
+                data: {
+                    labels: bia.map(d => d.measurement_time ? d.measurement_time.split('T')[0] : ''),
+                    datasets: [{ label: 'Massa Muscolare (kg)', data: bia.map(d => d.muscle_mass), borderColor: '#4ade80', tension: 0.2 }]
+                }
+            });
+
+            // B. Grafico Sleep Score RingConn
+            if (ringconn.length) {
+                chartInstances.sleep = new Chart(document.getElementById('ringconnSleepChart'), {
+                    type: 'line',
+                    data: {
+                        labels: ringconn.map(r => r.label),
+                        datasets: [{ label: 'Sleep Score (RingConn)', data: ringconn.map(r => r.sleep_score), borderColor: '#ec4899', tension: 0.2 }]
+                    }
+                });
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', loadDashboardData);
     </script>
-
 </body>
 </html>
