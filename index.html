@@ -193,6 +193,7 @@
                     const headers = results.meta.fields;
 
                     // A. IMPORT WORKOUTS (Hevy)
+                   // A. IMPORT WORKOUTS (Hevy - Modalità Overwrite / Sovrascrittura)
                     if (headers.includes('title') && headers.includes('start_time') && headers.includes('set_index')) {
                         const formattedWorkouts = data.map(r => ({
                             title: r.title || null,
@@ -210,13 +211,34 @@
                             duration_seconds: r.duration_seconds ? parseFloat(r.duration_seconds) : null,
                             rpe: r.rpe ? parseFloat(r.rpe) : null
                         })).filter(r => r.start_time && r.exercise_title && !isNaN(r.set_index));
-
-                        const { error } = await supabaseClient
+                    
+                        if (formattedWorkouts.length === 0) {
+                            alert("⚠️ Nessun dato valido trovato nel file Workouts.");
+                            return;
+                        }
+                    
+                        // 1. Svuota completamente la tabella su Supabase per sovrascrivere
+                        const { error: deleteError } = await supabaseClient
                             .from('workouts')
-                            .upsert(formattedWorkouts, { onConflict: 'start_time,exercise_title,set_index' });
-
-                        if (error) alert("❌ Errore Workouts: " + error.message);
-                        else { alert("✅ Allenamenti Hevy sincronizzati con successo!"); loadDashboardData(); }
+                            .delete()
+                            .neq('id', 0); // Elimina tutti i record presenti
+                    
+                        if (deleteError) {
+                            alert("❌ Errore durante il reset della tabella Workouts: " + deleteError.message);
+                            return;
+                        }
+                    
+                        // 2. Inserimento in blocchi (batch) di tutti i dati del nuovo file
+                        const { error: insertError } = await supabaseClient
+                            .from('workouts')
+                            .insert(formattedWorkouts);
+                    
+                        if (insertError) {
+                            alert("❌ Errore durante il caricamento dei Workouts: " + insertError.message);
+                        } else {
+                            alert("✅ Allenamenti Hevy sovrascritti e sincronizzati con successo!");
+                            loadDashboardData();
+                        }
                     }
                     // B. IMPORT BIA (Formato Nativo 43 Colonne)
                     else if (headers.includes('Time') && headers.includes('Weight')) {
