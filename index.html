@@ -192,7 +192,6 @@
                     const data = results.data;
                     const headers = results.meta.fields;
 
-                    // A. IMPORT WORKOUTS (Hevy)
                    // A. IMPORT WORKOUTS (Hevy - Modalità Overwrite / Sovrascrittura)
                     if (headers.includes('title') && headers.includes('start_time') && headers.includes('set_index')) {
                         const formattedWorkouts = data.map(r => ({
@@ -217,18 +216,18 @@
                             return;
                         }
                     
-                        // 1. Svuota completamente la tabella su Supabase per sovrascrivere
+                        // 1. Reset/Svuotamento completo della tabella su Supabase
                         const { error: deleteError } = await supabaseClient
                             .from('workouts')
                             .delete()
-                            .neq('id', 0); // Elimina tutti i record presenti
+                            .neq('id', 0); // Cancella tutte le righe esistenti
                     
                         if (deleteError) {
                             alert("❌ Errore durante il reset della tabella Workouts: " + deleteError.message);
                             return;
                         }
                     
-                        // 2. Inserimento in blocchi (batch) di tutti i dati del nuovo file
+                        // 2. Inserimento semplice di tutte le righe (senza clausola onConflict/upsert)
                         const { error: insertError } = await supabaseClient
                             .from('workouts')
                             .insert(formattedWorkouts);
