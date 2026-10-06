@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lean Bulk, Training & RingConn Dashboard - Marco</title>
-    <!-- Chart.js, PapaParse (CSV Parser) & Supabase Client -->
+    <!-- Chart.js, PapaParse & Supabase SDK -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -19,7 +19,6 @@
             --accent-orange: #fb923c;
             --accent-yellow: #facc15;
             --accent-pink: #ec4899;
-            --accent-purple: #c084fc;
         }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -76,33 +75,69 @@
             font-weight: bold;
         }
 
-        /* Stili Form Inserimento RingConn Nascosta */
-        .form-card {
-            display: none; /* Inizialmente nascosta */
+        /* ------------------------------------------------------------- */
+        /* STILI POPUP MODALE RINGCONN (OVERLAY)                         */
+        /* ------------------------------------------------------------- */
+        .modal-overlay {
+            display: none; /* Nascosto di default */
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(4px);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
             background: var(--card-bg);
-            padding: 20px;
-            border-radius: 12px;
             border: 1px solid var(--accent-pink);
-            margin-bottom: 35px;
-            animation: fadeIn 0.3s ease-in-out;
+            border-radius: 16px;
+            padding: 25px;
+            width: 90%;
+            max-width: 650px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+            animation: modalPop 0.25s ease-out;
         }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-10px); }
-            to { opacity: 1; transform: translateY(0); }
+        @keyframes modalPop {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
         }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .modal-title {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: var(--accent-pink);
+        }
+        .modal-close {
+            background: none;
+            border: none;
+            color: #94a3b8;
+            font-size: 1.4rem;
+            cursor: pointer;
+        }
+        .modal-close:hover { color: #ffffff; }
+
         .form-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 15px;
+            gap: 12px;
             margin-top: 15px;
         }
         .form-group {
             display: flex;
             flex-direction: column;
-            gap: 5px;
+            gap: 4px;
         }
         .form-group label {
-            font-size: 0.8rem;
+            font-size: 0.75rem;
             color: #94a3b8;
             text-transform: uppercase;
         }
@@ -112,7 +147,7 @@
             color: #f8fafc;
             padding: 8px 12px;
             border-radius: 8px;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
         }
         .form-group input:focus {
             outline: none;
@@ -126,16 +161,18 @@
             border-radius: 8px;
             font-weight: bold;
             cursor: pointer;
-            margin-top: 15px;
-            transition: background 0.2s;
+            margin-top: 20px;
+            width: 100%;
+            font-size: 0.95rem;
         }
-        .btn-submit:hover {
-            background: #db2777;
-        }
+        .btn-submit:hover { background: #db2777; }
 
+        /* ------------------------------------------------------------- */
+        /* STILI KPI CARDS & DASHBOARD                                   */
+        /* ------------------------------------------------------------- */
         .kpi-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
             gap: 15px;
             margin-bottom: 30px;
         }
@@ -147,7 +184,7 @@
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
         .kpi-title { font-size: 0.8rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; }
-        .kpi-value { font-size: 1.6rem; font-weight: bold; margin-top: 5px; }
+        .kpi-value { font-size: 1.7rem; font-weight: bold; margin-top: 6px; }
         .kpi-date { font-size: 0.75rem; color: #64748b; margin-top: 4px; }
 
         .charts-grid {
@@ -190,20 +227,21 @@
         <p>Infrastruttura Cloud Supabase con Sincronizzazione Dinamica</p>
     </div>
 
+    <!-- Barra delle Azioni principali -->
     <div class="toolbar">
         <div>
             <span style="color: #94a3b8; font-size: 0.9rem;">Sincronizzazione Dati:</span>
             <strong style="color: var(--accent-green); margin-left: 5px;">Attiva (Cloud DB)</strong>
         </div>
         <div class="toolbar-actions">
-            <!-- Pulsante Importazione Solo Hevy e BIA -->
+            <!-- Input File Nascosto per Import CSV -->
             <input type="file" id="csvFileInput" accept=".csv" style="display: none;" onchange="handleCSVImport(event)">
             <button class="btn-action btn-import" onclick="document.getElementById('csvFileInput').click()">
                 📁 Importa CSV (Hevy / BIA)
             </button>
             
-            <!-- Pulsante Mostra/Nascondi Form RingConn -->
-            <button class="btn-action btn-ringconn" onclick="toggleRingConnForm()">
+            <!-- Pulsante che apre il POPUP Modale per RingConn -->
+            <button class="btn-action btn-ringconn" onclick="openRingConnModal()">
                 ➕ Inserisci RingConn
             </button>
             
@@ -211,18 +249,337 @@
         </div>
     </div>
 
-    <!-- Form di Inserimento Manuale RingConn (Nascosta/Mostrata dinamicamente) -->
-    <div class="form-card" id="ringconnFormCard">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <div class="section-title" style="color: var(--accent-pink); margin-bottom: 0;">💍 Inserimento Report Settimanale RingConn</div>
-            <button onclick="toggleRingConnForm()" style="background: none; border: none; color: #94a3b8; cursor: pointer; font-size: 1.2rem;">✖</button>
-        </div>
-        <p style="color: #94a3b8; font-size: 0.85rem; margin-top: 5px;">Compila i dati del report PDF generato dall'app per aggiornare il database.</p>
-        
-        <form id="ringconnForm" onsubmit="handleRingConnSubmit(event)">
-            <div class="form-grid">
-                <div class="form-group">
-                    <label>Etichetta Settimana</label>
-                    <input type="text" id="rc_label" placeholder="es. 21/09-27/09" required>
+    <!-- ------------------------------------------------------------- -->
+    <!-- POPUP MODALE INSERIMENTO RINGCONN (Overlay)                   -->
+    <!-- ------------------------------------------------------------- -->
+    <div class="modal-overlay" id="ringconnModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">💍 Inserimento Report Settimanale RingConn</div>
+                <button class="modal-close" onclick="closeRingConnModal()">✖</button>
+            </div>
+            <p style="color: #94a3b8; font-size: 0.85rem; margin-top: 0;">Inserisci i valori dal report PDF dell'app RingConn.</p>
+            
+            <form id="ringconnForm" onsubmit="handleRingConnSubmit(event)">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Etichetta Settimana</label>
+                        <input type="text" id="rc_label" placeholder="es. 21/09-27/09" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Inizio Settimana</label>
+                        <input type="date" id="rc_week_start">
+                    </div>
+                    <div class="form-group">
+                        <label>Fine Settimana</label>
+                        <input type="date" id="rc_week_end">
+                    </div>
+                    <div class="form-group">
+                        <label>Sleep Score</label>
+                        <input type="number" id="rc_sleep_score" placeholder="es. 85">
+                    </div>
+                    <div class="form-group">
+                        <label>Sleep Duration</label>
+                        <input type="text" id="rc_sleep_duration" placeholder="es. 7h 30m">
+                    </div>
+                    <div class="form-group">
+                        <label>Sleep HR Avg (bpm)</label>
+                        <input type="number" id="rc_sleep_hr_avg" placeholder="es. 54">
+                    </div>
+                    <div class="form-group">
+                        <label>Activity Score</label>
+                        <input type="number" id="rc_activity_score" placeholder="es. 90">
+                    </div>
+                    <div class="form-group">
+                        <label>Passi Medi (Steps)</label>
+                        <input type="number" id="rc_steps_avg" placeholder="es. 12500">
+                    </div>
+                    <div class="form-group">
+                        <label>Calorie Medie (kcal)</label>
+                        <input type="number" id="rc_calories_avg" placeholder="es. 2650">
+                    </div>
+                    <div class="form-group">
+                        <label>Stress Score</label>
+                        <input type="number" id="rc_stress_score" placeholder="es. 32">
+                    </div>
                 </div>
-                <div
+                <button type="submit" class="btn-submit">💾 Salva Report RingConn</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- KPI CARDS DINAMICHE BIA (Inizialmente vuote, popolate via JS) -->
+    <div class="kpi-grid" id="kpiGridContainer">
+        <div class="kpi-card"><div class="kpi-title">Peso Attuale</div><div class="kpi-value" style="color:var(--accent-blue);">--</div></div>
+        <div class="kpi-card"><div class="kpi-title">Massa Magra (LBM)</div><div class="kpi-value" style="color:var(--accent-teal);">--</div></div>
+        <div class="kpi-card"><div class="kpi-title">Massa Muscolare</div><div class="kpi-value" style="color:var(--accent-green);">--</div></div>
+        <div class="kpi-card"><div class="kpi-title">Massa Grassa</div><div class="kpi-value" style="color:var(--accent-orange);">--</div></div>
+    </div>
+
+    <!-- Grafici Interattivi -->
+    <div class="charts-grid">
+        <div class="chart-card"><canvas id="volMuscleChart"></canvas></div>
+        <div class="chart-card"><canvas id="ringconnSleepChart"></canvas></div>
+    </div>
+
+    <!-- Tabella Allenamenti Aggregati Hevy -->
+    <div class="section-title">🏋️‍♂️ Registro Sessioni di Allenamento (Hevy)</div>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Data</th>
+                    <th>Allenamento</th>
+                    <th>Volume Totale</th>
+                    <th>Serie Totali</th>
+                    <th>Ripetizioni</th>
+                </tr>
+            </thead>
+            <tbody id="workoutTableBody"></tbody>
+        </table>
+    </div>
+
+    <script>
+        // 1. CONFIGURAZIONE SUPABASE
+        const SUPABASE_URL = "https://TUO_PROJECT_ID.supabase.co";
+        const SUPABASE_ANON_KEY = "LA_TUA_ANON_KEY";
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        const mesiIT = { 'gen': 'Jan', 'feb': 'Feb', 'mar': 'Mar', 'apr': 'Apr', 'mag': 'May', 'giu': 'Jun', 'lug': 'Jul', 'ago': 'Aug', 'set': 'Sep', 'ott': 'Oct', 'nov': 'Nov', 'dic': 'Dec' };
+
+        function parseHevyDate(dateStr) {
+            if (!dateStr) return null;
+            let s = String(dateStr);
+            Object.keys(mesiIT).forEach(it => { s = s.replace(it, mesiIT[it]); });
+            const d = new Date(s);
+            return isNaN(d.getTime()) ? null : d.toISOString();
+        }
+
+        // Funzioni Gestione Popup Modale RingConn
+        function openRingConnModal() {
+            document.getElementById('ringconnModal').style.display = 'flex';
+        }
+        function closeRingConnModal() {
+            document.getElementById('ringconnModal').style.display = 'none';
+        }
+
+        // 2. IMPORTAZIONE CSV AUTOMATICA (Hevy e BIA)
+        async function handleCSVImport(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            Papa.parse(file, {
+                header: true,
+                skipEmptyLines: true,
+                complete: async function(results) {
+                    const data = results.data;
+                    const headers = results.meta.fields;
+
+                    // A. IMPORT WORKOUTS (Hevy - Overwrite)
+                    if (headers.includes('title') && headers.includes('start_time') && headers.includes('set_index')) {
+                        const formattedWorkouts = data.map(r => ({
+                            title: r.title || null,
+                            start_time: parseHevyDate(r.start_time),
+                            end_time: parseHevyDate(r.end_time),
+                            description: r.description || null,
+                            exercise_title: r.exercise_title,
+                            superset_id: r.superset_id ? parseInt(r.superset_id) : null,
+                            exercise_notes: r.exercise_notes || null,
+                            set_index: parseInt(r.set_index),
+                            set_type: r.set_type || 'normal',
+                            weight_kg: r.weight_kg ? parseFloat(r.weight_kg) : null,
+                            reps: r.reps ? parseInt(r.reps) : null,
+                            distance_km: r.distance_km ? parseFloat(r.distance_km) : null,
+                            duration_seconds: r.duration_seconds ? parseFloat(r.duration_seconds) : null,
+                            rpe: r.rpe ? parseFloat(r.rpe) : null
+                        })).filter(r => r.start_time && r.exercise_title && !isNaN(r.set_index));
+
+                        if (formattedWorkouts.length === 0) { alert("⚠️ Nessun dato valido trovato nel file Workouts."); return; }
+
+                        const { error: deleteError } = await supabaseClient.from('workouts').delete().neq('id', 0);
+                        if (deleteError) { alert("❌ Errore reset Workouts: " + deleteError.message); return; }
+
+                        const { error: insertError } = await supabaseClient.from('workouts').insert(formattedWorkouts);
+                        if (insertError) alert("❌ Errore caricamento Workouts: " + insertError.message);
+                        else { alert("✅ Allenamenti Hevy sovrascritti con successo!"); loadDashboardData(); }
+                    }
+
+                    // B. IMPORT BIA (Formato Nativo 43 Colonne - Overwrite)
+                    else if (headers.includes('Time') && headers.includes('Weight')) {
+                        const rawBIA = data.map(r => {
+                            const rawTime = r['Time'];
+                            if (!rawTime || String(rawTime).trim() === '') return null;
+                            const dateObj = new Date(rawTime);
+                            const parsedDate = isNaN(dateObj.getTime()) ? null : dateObj.toISOString();
+                            if (!parsedDate) return null;
+
+                            return {
+                                measurement_time: parsedDate,
+                                weight: r['Weight'] ? parseFloat(r['Weight']) : null,
+                                bmi: r['BMI'] ? parseFloat(r['BMI']) : null,
+                                body_fat_percentage: r['Body Fat Percentage'] ? parseFloat(r['Body Fat Percentage']) : null,
+                                subcutaneous_fat: r['Subcutaneous Fat'] ? parseFloat(r['Subcutaneous Fat']) : null,
+                                heart_rate: r['Heart Rate'] ? parseInt(r['Heart Rate']) : null,
+                                visceral_fat: r['Visceral Fat'] ? parseInt(r['Visceral Fat']) : null,
+                                body_water: r['Body Water'] ? parseFloat(r['Body Water']) : null,
+                                muscle_mass: r['Muscle Mass'] ? parseFloat(r['Muscle Mass']) : null,
+                                bone_mass: r['Bone Mass'] ? parseFloat(r['Bone Mass']) : null,
+                                basal_metabolism: r['Basal Metabolism'] ? parseInt(r['Basal Metabolism']) : null,
+                                lean_body_mass: r['Lean Body Mass'] ? parseFloat(r['Lean Body Mass']) : null,
+                                body_score: r['Body Score'] ? parseInt(r['Body Score']) : null
+                            };
+                        }).filter(r => r !== null && r.measurement_time);
+
+                        const uniqueBIAMap = new Map();
+                        rawBIA.forEach(item => uniqueBIAMap.set(item.measurement_time, item));
+                        const formattedBIA = Array.from(uniqueBIAMap.values());
+
+                        if (formattedBIA.length === 0) { alert("⚠️ Nessun dato BIA valido trovato."); return; }
+
+                        const { error: deleteError } = await supabaseClient.from('bia_measurements').delete().neq('id', 0);
+                        if (deleteError) { alert("❌ Errore reset BIA: " + deleteError.message); return; }
+
+                        const { error: insertError } = await supabaseClient.from('bia_measurements').insert(formattedBIA);
+                        if (insertError) alert("❌ Errore caricamento BIA: " + insertError.message);
+                        else { alert("✅ Misurazioni BIA sovrascritte con successo!"); loadDashboardData(); }
+                    } else {
+                        alert("⚠️ Formato file non riconosciuto.");
+                    }
+                }
+            });
+        }
+
+        // 3. SALVATAGGIO REPORT RINGCONN DA MODALE
+        async function handleRingConnSubmit(event) {
+            event.preventDefault();
+
+            const record = {
+                label: document.getElementById('rc_label').value.trim(),
+                week_start: document.getElementById('rc_week_start').value || null,
+                week_end: document.getElementById('rc_week_end').value || null,
+                sleep_score: document.getElementById('rc_sleep_score').value ? parseInt(document.getElementById('rc_sleep_score').value) : null,
+                sleep_duration: document.getElementById('rc_sleep_duration').value.trim() || null,
+                sleep_hr_avg: document.getElementById('rc_sleep_hr_avg').value ? parseInt(document.getElementById('rc_sleep_hr_avg').value) : null,
+                activity_score: document.getElementById('rc_activity_score').value ? parseInt(document.getElementById('rc_activity_score').value) : null,
+                steps_avg: document.getElementById('rc_steps_avg').value ? parseInt(document.getElementById('rc_steps_avg').value) : null,
+                calories_avg: document.getElementById('rc_calories_avg').value ? parseInt(document.getElementById('rc_calories_avg').value) : null,
+                stress_score: document.getElementById('rc_stress_score').value ? parseInt(document.getElementById('rc_stress_score').value) : null
+            };
+
+            const { error } = await supabaseClient
+                .from('ringconn_weekly_reports')
+                .upsert([record], { onConflict: 'label' });
+
+            if (error) {
+                alert("❌ Errore salvataggio RingConn: " + error.message);
+            } else {
+                alert("✅ Report RingConn salvato con successo!");
+                document.getElementById('ringconnForm').reset();
+                closeRingConnModal(); // Chiude il popup
+                loadDashboardData();
+            }
+        }
+
+        // 4. CARICAMENTO DATI E CALCOLO KPI "ULTIMO DATO DISPONIBILE"
+        async function loadDashboardData() {
+            const { data: bia } = await supabaseClient.from('bia_measurements').select('*').order('measurement_time', { ascending: true });
+            const { data: workouts } = await supabaseClient.from('workouts').select('*');
+            const { data: ringconn } = await supabaseClient.from('ringconn_weekly_reports').select('*').order('week_start', { ascending: true });
+
+            if (bia && bia.length) {
+                // Trova in modo indipendente l'ultimo valore valido per ogni metrica
+                const getLastValidMetric = (field) => {
+                    for (let i = bia.length - 1; i >= 0; i--) {
+                        if (bia[i][field] !== null && bia[i][field] !== undefined) {
+                            const dateStr = bia[i].measurement_time ? bia[i].measurement_time.split('T')[0] : '';
+                            return { val: bia[i][field], date: dateStr };
+                        }
+                    }
+                    return { val: '-', date: '' };
+                };
+
+                const weightObj = getLastValidMetric('weight');
+                const lbmObj = getLastValidMetric('lean_body_mass');
+                const muscleObj = getLastValidMetric('muscle_mass');
+                const fatObj = getLastValidMetric('body_fat_percentage');
+
+                document.getElementById('kpiGridContainer').innerHTML = `
+                    <div class="kpi-card">
+                        <div class="kpi-title">Peso Attuale</div>
+                        <div class="kpi-value" style="color:var(--accent-blue);">${weightObj.val} kg</div>
+                        <div class="kpi-date">${weightObj.date ? 'Dato del: ' + weightObj.date : ''}</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-title">Massa Magra (LBM)</div>
+                        <div class="kpi-value" style="color:var(--accent-teal);">${lbmObj.val} kg</div>
+                        <div class="kpi-date">${lbmObj.date ? 'Dato del: ' + lbmObj.date : ''}</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-title">Massa Muscolare</div>
+                        <div class="kpi-value" style="color:var(--accent-green);">${muscleObj.val} kg</div>
+                        <div class="kpi-date">${muscleObj.date ? 'Dato del: ' + muscleObj.date : ''}</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-title">Massa Grassa</div>
+                        <div class="kpi-value" style="color:var(--accent-orange);">${fatObj.val} %</div>
+                        <div class="kpi-date">${fatObj.date ? 'Dato del: ' + fatObj.date : ''}</div>
+                    </div>
+                `;
+            }
+
+            if (workouts && workouts.length) renderWorkoutAggregates(workouts);
+            if (bia || ringconn) renderCharts(bia || [], ringconn || []);
+        }
+
+        // 5. AGGREGAZIONE ALLENAMENTI
+        function renderWorkoutAggregates(rawWorkouts) {
+            const groups = {};
+            rawWorkouts.forEach(w => {
+                const date = w.start_time.split('T')[0];
+                if (!groups[date]) groups[date] = { date, title: w.title || 'Allenamento', volume: 0, sets: 0, reps: 0 };
+                groups[date].volume += (w.weight_kg || 0) * (w.reps || 0);
+                groups[date].sets += 1;
+                groups[date].reps += (w.reps || 0);
+            });
+
+            const tbody = document.getElementById('workoutTableBody');
+            tbody.innerHTML = '';
+            Object.values(groups).sort((a,b) => b.date.localeCompare(a.date)).forEach(w => {
+                tbody.innerHTML += `<tr>
+                    <td style="color:var(--accent-blue); font-weight:bold;">${w.date}</td>
+                    <td>${w.title}</td>
+                    <td style="color:var(--accent-yellow); font-weight:bold;">${w.volume.toLocaleString('it-IT')} kg</td>
+                    <td>${w.sets} serie</td>
+                    <td>${w.reps} reps</td>
+                </tr>`;
+            });
+        }
+
+        // 6. RENDER GRAFICI CHART.JS
+        let chartInstances = {};
+        function renderCharts(bia, ringconn) {
+            Object.values(chartInstances).forEach(chart => chart.destroy());
+
+            chartInstances.muscle = new Chart(document.getElementById('volMuscleChart'), {
+                type: 'line',
+                data: {
+                    labels: bia.map(d => d.measurement_time ? d.measurement_time.split('T')[0] : ''),
+                    datasets: [{ label: 'Massa Muscolare (kg)', data: bia.map(d => d.muscle_mass), borderColor: '#4ade80', tension: 0.2 }]
+                }
+            });
+
+            if (ringconn.length) {
+                chartInstances.sleep = new Chart(document.getElementById('ringconnSleepChart'), {
+                    type: 'line',
+                    data: {
+                        labels: ringconn.map(r => r.label),
+                        datasets: [{ label: 'Sleep Score (RingConn)', data: ringconn.map(r => r.sleep_score), borderColor: '#ec4899', tension: 0.2 }]
+                    }
+                });
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', loadDashboardData);
+    </script>
+</body>
+</html>
