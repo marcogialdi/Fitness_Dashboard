@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Workout - Registro Allenamenti</title>
+    <title>Workout - Registro & Gruppi Muscolari</title>
     <link rel="stylesheet" href="css/style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -24,8 +24,8 @@
     </header>
 
     <div class="container">
-        <h1 class="page-title">Allenamenti & Volumi (Hevy)</h1>
-        <p class="page-subtitle">Tracciamento delle sessioni di forza e dei volumi di carico.</p>
+        <h1 class="page-title">Allenamenti & Analisi Schede A-B-C-D</h1>
+        <p class="page-subtitle">Ripartizione automatica di serie e volumi basata sulle schede A, B, C e D.</p>
 
         <!-- Barra Filtri Temporali -->
         <div class="filter-bar">
@@ -37,26 +37,45 @@
             <button class="btn-filter active" onclick="setFilter('all')">Tutto</button>
         </div>
 
+        <!-- KPI Principali Allenamento -->
         <div class="kpi-grid">
-            <div class="kpi-card"><div class="kpi-title">Allenamenti Totali</div><div class="kpi-value" id="kpiTotalWorkouts" style="color:var(--accent-blue);">--</div></div>
-            <div class="kpi-card"><div class="kpi-title">Volume Ultima Sessione</div><div class="kpi-value" id="kpiLastVolume" style="color:var(--accent-yellow);">-- kg</div></div>
-            <div class="kpi-card"><div class="kpi-title">Serie Totali Registrate</div><div class="kpi-value" id="kpiTotalSets" style="color:var(--accent-green);">--</div></div>
-        </div>
-
-        <div class="charts-grid" style="grid-template-columns: 1fr;">
-            <div class="chart-card">
-                <h3 style="color: var(--accent-yellow); margin-top:0;">Andamento Volume di Allenamento (kg) & Trend</h3>
-                <canvas id="workoutVolumeChart"></canvas>
+            <div class="kpi-card">
+                <div class="kpi-title">Allenamenti Eseguiti</div>
+                <div class="kpi-value" id="kpiTotalWorkouts" style="color:var(--accent-blue);">--</div>
+                <div class="kpi-date">Sessioni completate</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-title">Volume Totale Sollevato</div>
+                <div class="kpi-value" id="kpiTotalVolume" style="color:var(--accent-yellow);">-- kg</div>
+                <div class="kpi-date">Kg complessivi</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-title">Serie Totali Eseguite</div>
+                <div class="kpi-value" id="kpiTotalSets" style="color:var(--accent-green);">--</div>
+                <div class="kpi-date">Set completati</div>
             </div>
         </div>
 
+        <!-- Grafici per Gruppi Muscolari & Schede -->
+        <div class="charts-grid">
+            <div class="chart-card">
+                <h3 style="color: var(--accent-teal); margin-top:0;">Frequenza Schede (A, B, C, D)</h3>
+                <canvas id="routineCountChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3 style="color: var(--accent-yellow); margin-top:0;">Serie Eseguite per Gruppo Muscolare</h3>
+                <canvas id="muscleSetsChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Registro Storico Sessioni -->
         <div class="section-title" style="color: var(--accent-teal); font-size: 1.2rem; font-weight: bold; margin-bottom: 10px;">🏋️‍♂️ Registro Sessioni Aggregate</div>
         <div style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; overflow-x: auto; max-height: 450px;">
             <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem;">
                 <thead>
                     <tr style="border-bottom: 2px solid var(--border-color);">
                         <th style="padding: 10px; color: var(--accent-blue);">Data</th>
-                        <th style="padding: 10px; color: var(--accent-blue);">Scheda / Titolo</th>
+                        <th style="padding: 10px; color: var(--accent-blue);">Scheda</th>
                         <th style="padding: 10px; color: var(--accent-blue);">Volume Totale</th>
                         <th style="padding: 10px; color: var(--accent-blue);">Serie Totalizzate</th>
                         <th style="padding: 10px; color: var(--accent-blue);">Ripetizioni</th>
@@ -85,53 +104,116 @@
             renderPage();
         }
 
+        // Funzione per identificare il tipo di scheda (A, B, C, D) dal titolo
+        function getRoutineType(title) {
+            if (!title) return 'Altro';
+            const t = title.toUpperCase();
+            if (t.includes('A')) return 'Scheda A';
+            if (t.includes('B')) return 'Scheda B';
+            if (t.includes('C')) return 'Scheda C';
+            if (t.includes('D')) return 'Scheda D';
+            return 'Altro';
+        }
+
         function renderPage() {
             Object.values(charts).forEach(c => c.destroy());
 
             if (!rawWorkouts.length) return;
 
-            document.getElementById('kpiTotalSets').innerText = rawWorkouts.length.toLocaleString('it-IT');
+            // 1. Filtra per intervallo data
+            const filteredWorkouts = filterDataByRange(rawWorkouts, 'start_time', currentFilter);
 
-            // Aggregazione per Data
-            const groups = {};
-            rawWorkouts.forEach(w => {
+            // 2. Calcolo KPI Generali
+            const uniqueDates = new Set(filteredWorkouts.map(w => w.start_time.split('T')[0]));
+            document.getElementById('kpiTotalWorkouts').innerText = uniqueDates.size;
+            document.getElementById('kpiTotalSets').innerText = filteredWorkouts.length.toLocaleString('it-IT');
+
+            let totalVol = 0;
+            filteredWorkouts.forEach(w => { totalVol += (w.weight_kg || 0) * (w.reps || 0); });
+            document.getElementById('kpiTotalVolume').innerText = Math.round(totalVol).toLocaleString('it-IT') + ' kg';
+
+            // 3. Conteggio Frequenza Schede A, B, C, D e Ripartizione Muscolare
+            const routineCounts = { 'Scheda A': 0, 'Scheda B': 0, 'Scheda C': 0, 'Scheda D': 0, 'Altro': 0 };
+            
+            // Inizializzazione gruppi muscolari
+            const muscleStats = {
+                'Petto': 0,
+                'Spalle': 0,
+                'Bicipiti': 0,
+                'Tricipiti': 0,
+                'Schiena': 0,
+                'Glutei/Gambe': 0,
+                'Addome': 0
+            };
+
+            // Aggregazione per sessione e raggruppamento
+            const groupsByDate = {};
+            filteredWorkouts.forEach(w => {
                 const date = w.start_time.split('T')[0];
-                if (!groups[date]) groups[date] = { date, title: w.title || 'Allenamento', volume: 0, sets: 0, reps: 0 };
-                groups[date].volume += (w.weight_kg || 0) * (w.reps || 0);
-                groups[date].sets += 1;
-                groups[date].reps += (w.reps || 0);
-            });
+                if (!groupsByDate[date]) {
+                    groupsByDate[date] = { date, title: w.title || 'Allenamento', volume: 0, sets: 0, reps: 0 };
+                    const routine = getRoutineType(w.title);
+                    if (routineCounts[routine] !== undefined) routineCounts[routine] += 1;
+                }
 
-            const allDates = Object.values(groups).sort((a,b) => a.date.localeCompare(b.date));
-            const filteredDates = filterDataByRange(allDates, 'date', currentFilter);
+                groupsByDate[date].volume += (w.weight_kg || 0) * (w.reps || 0);
+                groupsByDate[date].sets += 1;
+                groupsByDate[date].reps += (w.reps || 0);
 
-            document.getElementById('kpiTotalWorkouts').innerText = filteredDates.length;
-            if (filteredDates.length) {
-                const last = filteredDates[filteredDates.length - 1];
-                document.getElementById('kpiLastVolume').innerText = last.volume.toLocaleString('it-IT') + ' kg';
-            }
-
-            // Grafico Volumi con Trendline
-            const volumes = filteredDates.map(d => d.volume);
-            charts.volume = new Chart(document.getElementById('workoutVolumeChart'), {
-                type: 'bar',
-                data: {
-                    labels: filteredDates.map(d => d.date),
-                    datasets: [
-                        { label: 'Volume Sollevato (kg)', data: volumes, backgroundColor: '#facc15', borderRadius: 6 },
-                        { type: 'line', label: 'Trend Volume', data: calculateTrendline(volumes), borderColor: '#ffffff', borderDash: [5, 5], pointRadius: 0 }
-                    ]
+                // Assegnazione della serie al gruppo muscolare corrispondente
+                const exerciseName = (w.exercise_title || '').toLowerCase();
+                if (exerciseName.includes('bench') || exerciseName.includes('panca') || exerciseName.includes('chest') || exerciseName.includes('fly') || exerciseName.includes('dip')) {
+                    muscleStats['Petto'] += 1;
+                } else if (exerciseName.includes('shoulder') || exerciseName.includes('overhead') || exerciseName.includes('lateral') || exerciseName.includes('spall') || exerciseName.includes('alzate')) {
+                    muscleStats['Spalle'] += 1;
+                } else if (exerciseName.includes('bicep') || exerciseName.includes('curl') || exerciseName.includes('bicipit')) {
+                    muscleStats['Bicipiti'] += 1;
+                } else if (exerciseName.includes('tricep') || exerciseName.includes('pushdown') || exerciseName.includes('skull') || exerciseName.includes('tricipit')) {
+                    muscleStats['Tricipiti'] += 1;
+                } else if (exerciseName.includes('lat') || exerciseName.includes('row') || exerciseName.includes('pull') || exerciseName.includes('rematore') || exerciseName.includes('schiena')) {
+                    muscleStats['Schiena'] += 1;
+                } else if (exerciseName.includes('squat') || exerciseName.includes('leg') || exerciseName.includes('press') || exerciseName.includes('lunge') || exerciseName.includes('hip thrust') || exerciseName.includes('gamb')) {
+                    muscleStats['Glutei/Gambe'] += 1;
+                } else if (exerciseName.includes('crunch') || exerciseName.includes('plank') || exerciseName.includes('addom') || exerciseName.includes('abs')) {
+                    muscleStats['Addome'] += 1;
                 }
             });
 
-            // Popola Tabella
+            // Grafico 1: Distribuzione Schede A, B, C, D
+            charts.routines = new Chart(document.getElementById('routineCountChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(routineCounts).filter(k => routineCounts[k] > 0),
+                    datasets: [{
+                        data: Object.values(routineCounts).filter(v => v > 0),
+                        backgroundColor: ['#38bdf8', '#4ade80', '#fb923c', '#ec4899', '#94a3b8']
+                    }]
+                }
+            });
+
+            // Grafico 2: Serie Totali Eseguite per Gruppo Muscolare
+            charts.muscles = new Chart(document.getElementById('muscleSetsChart'), {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(muscleStats),
+                    datasets: [{
+                        label: 'Numero di Serie',
+                        data: Object.values(muscleStats),
+                        backgroundColor: '#facc15',
+                        borderRadius: 6
+                    }]
+                }
+            });
+
+            // 4. Popola Tabella Registro Sessioni
+            const sortedDates = Object.values(groupsByDate).sort((a,b) => b.date.localeCompare(a.date));
             const tbody = document.getElementById('workoutTableBody');
             tbody.innerHTML = '';
-            [...filteredDates].reverse().forEach(w => {
+            sortedDates.forEach(w => {
                 tbody.innerHTML += `<tr style="border-bottom: 1px solid var(--border-color);">
                     <td style="padding: 10px; color: var(--accent-blue); font-weight: bold;">${w.date}</td>
                     <td style="padding: 10px;">${w.title}</td>
-                    <td style="padding: 10px; color: var(--accent-yellow); font-weight: bold;">${w.volume.toLocaleString('it-IT')} kg</td>
+                    <td style="padding: 10px; color: var(--accent-yellow); font-weight: bold;">${Math.round(w.volume).toLocaleString('it-IT')} kg</td>
                     <td style="padding: 10px;">${w.sets} serie</td>
                     <td style="padding: 10px;">${w.reps} reps</td>
                 </tr>`;
