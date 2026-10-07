@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workout - Registro Allenamenti</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/app.js"></script>
+</head>
+<body>
+
+    <header class="main-header">
+        <div class="logo">📊 Marco's Fitness Hub</div>
+        <button class="menu-toggle" onclick="toggleMenu()">☰</button>
+        <nav class="nav-menu" id="navMenu">
+            <a href="index.html" class="nav-link">Home</a>
+            <a href="body.html" class="nav-link">Body</a>
+            <a href="workout.html" class="nav-link active">Workout</a>
+            <a href="wellness.html" class="nav-link">Wellness</a>
+            <a href="upload.html" class="nav-link" style="color: var(--accent-green);">Carica Dati</a>
+        </nav>
+    </header>
+
+    <div class="container">
+        <h1 class="page-title">Allenamenti & Volumi (Hevy)</h1>
+        <p class="page-subtitle">Tracciamento delle sessioni di forza, volumi sollevati e storico serie.</p>
+
+        <!-- KPI Workout -->
+        <div class="kpi-grid" id="workoutKpiContainer">
+            <div class="kpi-card"><div class="kpi-title">Allenamenti Totali</div><div class="kpi-value" id="kpiTotalWorkouts" style="color:var(--accent-blue);">--</div></div>
+            <div class="kpi-card"><div class="kpi-title">Volume Ultima Sessione</div><div class="kpi-value" id="kpiLastVolume" style="color:var(--accent-yellow);">-- kg</div></div>
+            <div class="kpi-card"><div class="kpi-title">Serie Totali Registrate</div><div class="kpi-value" id="kpiTotalSets" style="color:var(--accent-green);">--</div></div>
+        </div>
+
+        <!-- Grafico Volumi -->
+        <div class="charts-grid" style="grid-template-columns: 1fr;">
+            <div class="chart-card">
+                <h3 style="color: var(--accent-yellow); margin-top:0;">Andamento Volume di Allenamento (kg Sollevati)</h3>
+                <canvas id="workoutVolumeChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Tabella Storico Sessioni -->
+        <div class="section-title" style="color: var(--accent-teal); font-size: 1.2rem; font-weight: bold; margin-bottom: 10px;">🏋️‍♂️ Registro Sessioni Aggregate</div>
+        <div style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; overflow-x: auto; max-height: 450px;">
+            <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem;">
+                <thead>
+                    <tr style="border-bottom: 2px solid var(--border-color);">
+                        <th style="padding: 10px; color: var(--accent-blue);">Data</th>
+                        <th style="padding: 10px; color: var(--accent-blue);">Scheda / Titolo</th>
+                        <th style="padding: 10px; color: var(--accent-blue);">Volume Totale</th>
+                        <th style="padding: 10px; color: var(--accent-blue);">Serie Totalizzate</th>
+                        <th style="padding: 10px; color: var(--accent-blue);">Ripetizioni</th>
+                    </tr>
+                </thead>
+                <tbody id="workoutTableBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        async function loadWorkoutData() {
+            const { data: workouts } = await supabaseClient.from('workouts').select('*');
+
+            if (workouts && workouts.length) {
+                document.getElementById('kpiTotalSets').innerText = workouts.length.toLocaleString('it-IT');
+
+                // Aggregazione per sessione/data
+                const groups = {};
+                workouts.forEach(w => {
+                    const date = w.start_time.split('T')[0];
+                    if (!groups[date]) groups[date] = { date, title: w.title || 'Allenamento', volume: 0, sets: 0, reps: 0 };
+                    groups[date].volume += (w.weight_kg || 0) * (w.reps || 0);
+                    groups[date].sets += 1;
+                    groups[date].reps += (w.reps || 0);
+                });
+
+                const sortedDates = Object.values(groups).sort((a,b) => a.date.localeCompare(b.date));
+                
+                document.getElementById('kpiTotalWorkouts').innerText = sortedDates.length;
+                if (sortedDates.length) {
+                    const last = sortedDates[sortedDates.length - 1];
+                    document.getElementById('kpiLastVolume').innerText = last.volume.toLocaleString('it-IT') + ' kg';
+                }
+
+                // Render Grafico Volumi
+                new Chart(document.getElementById('workoutVolumeChart'), {
+                    type: 'bar',
+                    data: {
+                        labels: sortedDates.map(d => d.date),
+                        datasets: [{ label: 'Volume Sollevato (kg)', data: sortedDates.map(d => d.volume), backgroundColor: '#facc15', borderRadius: 6 }]
+                    }
+                });
+
+                // Populate Tabella
+                const tbody = document.getElementById('workoutTableBody');
+                tbody.innerHTML = '';
+                [...sortedDates].reverse().forEach(w => {
+                    tbody.innerHTML += `<tr style="border-bottom: 1px solid var(--border-color);">
+                        <td style="padding: 10px; color: var(--accent-blue); font-weight: bold;">${w.date}</td>
+                        <td style="padding: 10px;">${w.title}</td>
+                        <td style="padding: 10px; color: var(--accent-yellow); font-weight: bold;">${w.volume.toLocaleString('it-IT')} kg</td>
+                        <td style="padding: 10px;">${w.sets} serie</td>
+                        <td style="padding: 10px;">${w.reps} reps</td>
+                    </tr>`;
+                });
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', loadWorkoutData);
+    </script>
+</body>
+</html>
