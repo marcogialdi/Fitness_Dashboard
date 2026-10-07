@@ -25,24 +25,31 @@
 
     <div class="container">
         <h1 class="page-title">Allenamenti & Volumi (Hevy)</h1>
-        <p class="page-subtitle">Tracciamento delle sessioni di forza, volumi sollevati e storico serie.</p>
+        <p class="page-subtitle">Tracciamento delle sessioni di forza e dei volumi di carico.</p>
 
-        <!-- KPI Workout -->
-        <div class="kpi-grid" id="workoutKpiContainer">
+        <!-- Barra Filtri Temporali -->
+        <div class="filter-bar">
+            <span class="filter-label">Filtra Periodo:</span>
+            <button class="btn-filter" onclick="setFilter('1w')">1 Settimana</button>
+            <button class="btn-filter" onclick="setFilter('1m')">1 Mese</button>
+            <button class="btn-filter" onclick="setFilter('3m')">3 Mesi</button>
+            <button class="btn-filter" onclick="setFilter('6m')">6 Mesi</button>
+            <button class="btn-filter active" onclick="setFilter('all')">Tutto</button>
+        </div>
+
+        <div class="kpi-grid">
             <div class="kpi-card"><div class="kpi-title">Allenamenti Totali</div><div class="kpi-value" id="kpiTotalWorkouts" style="color:var(--accent-blue);">--</div></div>
             <div class="kpi-card"><div class="kpi-title">Volume Ultima Sessione</div><div class="kpi-value" id="kpiLastVolume" style="color:var(--accent-yellow);">-- kg</div></div>
             <div class="kpi-card"><div class="kpi-title">Serie Totali Registrate</div><div class="kpi-value" id="kpiTotalSets" style="color:var(--accent-green);">--</div></div>
         </div>
 
-        <!-- Grafico Volumi -->
         <div class="charts-grid" style="grid-template-columns: 1fr;">
             <div class="chart-card">
-                <h3 style="color: var(--accent-yellow); margin-top:0;">Andamento Volume di Allenamento (kg Sollevati)</h3>
+                <h3 style="color: var(--accent-yellow); margin-top:0;">Andamento Volume di Allenamento (kg) & Trend</h3>
                 <canvas id="workoutVolumeChart"></canvas>
             </div>
         </div>
 
-        <!-- Tabella Storico Sessioni -->
         <div class="section-title" style="color: var(--accent-teal); font-size: 1.2rem; font-weight: bold; margin-bottom: 10px;">🏋️‍♂️ Registro Sessioni Aggregate</div>
         <div style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; overflow-x: auto; max-height: 450px;">
             <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem;">
@@ -61,52 +68,74 @@
     </div>
 
     <script>
+        let rawWorkouts = [];
+        let currentFilter = 'all';
+        let charts = {};
+
+        function setFilter(range) {
+            currentFilter = range;
+            document.querySelectorAll('.btn-filter').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            renderPage();
+        }
+
         async function loadWorkoutData() {
             const { data: workouts } = await supabaseClient.from('workouts').select('*');
+            rawWorkouts = workouts || [];
+            renderPage();
+        }
 
-            if (workouts && workouts.length) {
-                document.getElementById('kpiTotalSets').innerText = workouts.length.toLocaleString('it-IT');
+        function renderPage() {
+            Object.values(charts).forEach(c => c.destroy());
 
-                // Aggregazione per sessione/data
-                const groups = {};
-                workouts.forEach(w => {
-                    const date = w.start_time.split('T')[0];
-                    if (!groups[date]) groups[date] = { date, title: w.title || 'Allenamento', volume: 0, sets: 0, reps: 0 };
-                    groups[date].volume += (w.weight_kg || 0) * (w.reps || 0);
-                    groups[date].sets += 1;
-                    groups[date].reps += (w.reps || 0);
-                });
+            if (!rawWorkouts.length) return;
 
-                const sortedDates = Object.values(groups).sort((a,b) => a.date.localeCompare(b.date));
-                
-                document.getElementById('kpiTotalWorkouts').innerText = sortedDates.length;
-                if (sortedDates.length) {
-                    const last = sortedDates[sortedDates.length - 1];
-                    document.getElementById('kpiLastVolume').innerText = last.volume.toLocaleString('it-IT') + ' kg';
-                }
+            document.getElementById('kpiTotalSets').innerText = rawWorkouts.length.toLocaleString('it-IT');
 
-                // Render Grafico Volumi
-                new Chart(document.getElementById('workoutVolumeChart'), {
-                    type: 'bar',
-                    data: {
-                        labels: sortedDates.map(d => d.date),
-                        datasets: [{ label: 'Volume Sollevato (kg)', data: sortedDates.map(d => d.volume), backgroundColor: '#facc15', borderRadius: 6 }]
-                    }
-                });
+            // Aggregazione per Data
+            const groups = {};
+            rawWorkouts.forEach(w => {
+                const date = w.start_time.split('T')[0];
+                if (!groups[date]) groups[date] = { date, title: w.title || 'Allenamento', volume: 0, sets: 0, reps: 0 };
+                groups[date].volume += (w.weight_kg || 0) * (w.reps || 0);
+                groups[date].sets += 1;
+                groups[date].reps += (w.reps || 0);
+            });
 
-                // Populate Tabella
-                const tbody = document.getElementById('workoutTableBody');
-                tbody.innerHTML = '';
-                [...sortedDates].reverse().forEach(w => {
-                    tbody.innerHTML += `<tr style="border-bottom: 1px solid var(--border-color);">
-                        <td style="padding: 10px; color: var(--accent-blue); font-weight: bold;">${w.date}</td>
-                        <td style="padding: 10px;">${w.title}</td>
-                        <td style="padding: 10px; color: var(--accent-yellow); font-weight: bold;">${w.volume.toLocaleString('it-IT')} kg</td>
-                        <td style="padding: 10px;">${w.sets} serie</td>
-                        <td style="padding: 10px;">${w.reps} reps</td>
-                    </tr>`;
-                });
+            const allDates = Object.values(groups).sort((a,b) => a.date.localeCompare(b.date));
+            const filteredDates = filterDataByRange(allDates, 'date', currentFilter);
+
+            document.getElementById('kpiTotalWorkouts').innerText = filteredDates.length;
+            if (filteredDates.length) {
+                const last = filteredDates[filteredDates.length - 1];
+                document.getElementById('kpiLastVolume').innerText = last.volume.toLocaleString('it-IT') + ' kg';
             }
+
+            // Grafico Volumi con Trendline
+            const volumes = filteredDates.map(d => d.volume);
+            charts.volume = new Chart(document.getElementById('workoutVolumeChart'), {
+                type: 'bar',
+                data: {
+                    labels: filteredDates.map(d => d.date),
+                    datasets: [
+                        { label: 'Volume Sollevato (kg)', data: volumes, backgroundColor: '#facc15', borderRadius: 6 },
+                        { type: 'line', label: 'Trend Volume', data: calculateTrendline(volumes), borderColor: '#ffffff', borderDash: [5, 5], pointRadius: 0 }
+                    ]
+                }
+            });
+
+            // Popola Tabella
+            const tbody = document.getElementById('workoutTableBody');
+            tbody.innerHTML = '';
+            [...filteredDates].reverse().forEach(w => {
+                tbody.innerHTML += `<tr style="border-bottom: 1px solid var(--border-color);">
+                    <td style="padding: 10px; color: var(--accent-blue); font-weight: bold;">${w.date}</td>
+                    <td style="padding: 10px;">${w.title}</td>
+                    <td style="padding: 10px; color: var(--accent-yellow); font-weight: bold;">${w.volume.toLocaleString('it-IT')} kg</td>
+                    <td style="padding: 10px;">${w.sets} serie</td>
+                    <td style="padding: 10px;">${w.reps} reps</td>
+                </tr>`;
+            });
         }
 
         document.addEventListener('DOMContentLoaded', loadWorkoutData);
