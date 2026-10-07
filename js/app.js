@@ -1,6 +1,6 @@
 // CONFIGURAZIONE SUPABASE
-const SUPABASE_URL = "https://TUO_PROJECT_ID.supabase.co";
-const SUPABASE_ANON_KEY = "LA_TUA_ANON_KEY";
+const SUPABASE_URL = "https://onrwqsbzakekauejmjer.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ucndxc2J6YWtla2F1ZWptamVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEyMTE0MjEsImV4cCI6MjEwNjc4NzQyMX0.1mpLds2hTvuaFat18GN7KrtDAOcAb3r6H2TmsA9i8H0";
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Toggle Menu Mobile Hamburger
