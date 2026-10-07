@@ -25,17 +25,20 @@
 
     <div class="container">
         <h1 class="page-title">Composizione Corporea (BIA)</h1>
-        <p class="page-subtitle">Analisi dettagliata delle metriche di peso, massa magra, muscolare e percentuale di grasso.</p>
+        <p class="page-subtitle">Analisi dettagliata delle metriche BIA con linee di tendenza.</p>
 
-        <!-- KPI Cards BIA -->
-        <div class="kpi-grid" id="bodyKpiContainer">
-            <div class="kpi-card"><div class="kpi-title">Peso Attuale</div><div class="kpi-value" style="color:var(--accent-blue);">--</div></div>
-            <div class="kpi-card"><div class="kpi-title">Massa Magra (LBM)</div><div class="kpi-value" style="color:var(--accent-teal);">--</div></div>
-            <div class="kpi-card"><div class="kpi-title">Massa Muscolare</div><div class="kpi-value" style="color:var(--accent-green);">--</div></div>
-            <div class="kpi-card"><div class="kpi-title">Massa Grassa %</div><div class="kpi-value" style="color:var(--accent-orange);">--</div></div>
+        <!-- Barra Filtri Temporali -->
+        <div class="filter-bar">
+            <span class="filter-label">Filtra Periodo:</span>
+            <button class="btn-filter" onclick="setFilter('1w')">1 Settimana</button>
+            <button class="btn-filter" onclick="setFilter('1m')">1 Mese</button>
+            <button class="btn-filter" onclick="setFilter('3m')">3 Mesi</button>
+            <button class="btn-filter" onclick="setFilter('6m')">6 Mesi</button>
+            <button class="btn-filter active" onclick="setFilter('all')">Tutto</button>
         </div>
 
-        <!-- Grafici Dettagliati BIA -->
+        <div class="kpi-grid" id="bodyKpiContainer"></div>
+
         <div class="charts-grid">
             <div class="chart-card">
                 <h3 style="color: var(--accent-blue); margin-top:0;">Evoluzione Peso & Massa Magra (kg)</h3>
@@ -50,70 +53,98 @@
                 <canvas id="muscleMassChart"></canvas>
             </div>
             <div class="chart-card">
-                <h3 style="color: var(--accent-teal); margin-top:0;">Acqua Corporea & BMR</h3>
-                <canvas id="waterBmrChart"></canvas>
+                <h3 style="color: var(--accent-teal); margin-top:0;">Acqua Corporea (%)</h3>
+                <canvas id="waterChart"></canvas>
             </div>
         </div>
     </div>
 
     <script>
+        let rawBia = [];
+        let currentFilter = 'all';
+        let charts = {};
+
+        function setFilter(range) {
+            currentFilter = range;
+            document.querySelectorAll('.btn-filter').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            renderPage();
+        }
+
         async function loadBodyData() {
             const { data: bia } = await supabaseClient.from('bia_measurements').select('*').order('measurement_time', { ascending: true });
+            rawBia = bia || [];
+            renderPage();
+        }
 
-            if (bia && bia.length) {
-                const w = getLastValidMetric(bia, 'weight');
-                const lbm = getLastValidMetric(bia, 'lean_body_mass');
-                const m = getLastValidMetric(bia, 'muscle_mass');
-                const f = getLastValidMetric(bia, 'body_fat_percentage');
+        function renderPage() {
+            Object.values(charts).forEach(c => c.destroy());
+
+            if (rawBia.length) {
+                const w = getLastValidMetric(rawBia, 'weight');
+                const lbm = getLastValidMetric(rawBia, 'lean_body_mass');
+                const m = getLastValidMetric(rawBia, 'muscle_mass');
+                const f = getLastValidMetric(rawBia, 'body_fat_percentage');
 
                 document.getElementById('bodyKpiContainer').innerHTML = `
-                    <div class="kpi-card"><div class="kpi-title">Peso Attuale</div><div class="kpi-value" style="color:var(--accent-blue);">${w.val} kg</div><div class="kpi-date">${w.date ? 'Dato del: ' + w.date : ''}</div></div>
-                    <div class="kpi-card"><div class="kpi-title">Massa Magra (LBM)</div><div class="kpi-value" style="color:var(--accent-teal);">${lbm.val} kg</div><div class="kpi-date">${lbm.date ? 'Dato del: ' + lbm.date : ''}</div></div>
-                    <div class="kpi-card"><div class="kpi-title">Massa Muscolare</div><div class="kpi-value" style="color:var(--accent-green);">${m.val} kg</div><div class="kpi-date">${m.date ? 'Dato del: ' + m.date : ''}</div></div>
-                    <div class="kpi-card"><div class="kpi-title">Massa Grassa</div><div class="kpi-value" style="color:var(--accent-orange);">${f.val} %</div><div class="kpi-date">${f.date ? 'Dato del: ' + f.date : ''}</div></div>
+                    <div class="kpi-card"><div class="kpi-title">Peso Attuale</div><div class="kpi-value" style="color:var(--accent-blue);">${w.val} kg</div><div class="kpi-date">${w.date}</div></div>
+                    <div class="kpi-card"><div class="kpi-title">Massa Magra (LBM)</div><div class="kpi-value" style="color:var(--accent-teal);">${lbm.val} kg</div><div class="kpi-date">${lbm.date}</div></div>
+                    <div class="kpi-card"><div class="kpi-title">Massa Muscolare</div><div class="kpi-value" style="color:var(--accent-green);">${m.val} kg</div><div class="kpi-date">${m.date}</div></div>
+                    <div class="kpi-card"><div class="kpi-title">Massa Grassa</div><div class="kpi-value" style="color:var(--accent-orange);">${f.val} %</div><div class="kpi-date">${f.date}</div></div>
                 `;
-
-                const labels = bia.map(d => d.measurement_time ? d.measurement_time.split('T')[0] : '');
-
-                // Grafico 1: Peso e LBM
-                new Chart(document.getElementById('weightLbmChart'), {
-                    type: 'line',
-                    data: {
-                        labels: labels,
-                        datasets: [
-                            { label: 'Peso (kg)', data: bia.map(d => d.weight), borderColor: '#38bdf8', tension: 0.2 },
-                            { label: 'Massa Magra (kg)', data: bia.map(d => d.lean_body_mass), borderColor: '#2dd4bf', tension: 0.2 }
-                        ]
-                    }
-                });
-
-                // Grafico 2: Grasso %
-                new Chart(document.getElementById('fatPercentageChart'), {
-                    type: 'line',
-                    data: {
-                        labels: labels,
-                        datasets: [{ label: 'Massa Grassa (%)', data: bia.map(d => d.body_fat_percentage), borderColor: '#fb923c', backgroundColor: 'rgba(251, 146, 60, 0.1)', fill: true, tension: 0.2 }]
-                    }
-                });
-
-                // Grafico 3: Massa Muscolare
-                new Chart(document.getElementById('muscleMassChart'), {
-                    type: 'line',
-                    data: {
-                        labels: labels,
-                        datasets: [{ label: 'Massa Muscolare (kg)', data: bia.map(d => d.muscle_mass), borderColor: '#4ade80', tension: 0.2 }]
-                    }
-                });
-
-                // Grafico 4: Acqua Corporea
-                new Chart(document.getElementById('waterBmrChart'), {
-                    type: 'line',
-                    data: {
-                        labels: labels,
-                        datasets: [{ label: 'Acqua Corporea (%)', data: bia.map(d => d.body_water), borderColor: '#38bdf8', tension: 0.2 }]
-                    }
-                });
             }
+
+            const filteredBia = filterDataByRange(rawBia, 'measurement_time', currentFilter);
+            const labels = filteredBia.map(d => d.measurement_time ? d.measurement_time.split('T')[0] : '');
+
+            // Grafico Peso e LBM con Trend
+            const weights = filteredBia.map(d => d.weight);
+            charts.weightLbm = new Chart(document.getElementById('weightLbmChart'), {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: 'Peso (kg)', data: weights, borderColor: '#38bdf8', tension: 0.2 },
+                        { label: 'Trend Peso', data: calculateTrendline(weights), borderColor: 'rgba(56, 189, 248, 0.4)', borderDash: [5, 5], pointRadius: 0 }
+                    ]
+                }
+            });
+
+            // Grafico Massa Grassa % con Trend
+            const fatVals = filteredBia.map(d => d.body_fat_percentage);
+            charts.fat = new Chart(document.getElementById('fatPercentageChart'), {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: 'Massa Grassa (%)', data: fatVals, borderColor: '#fb923c', tension: 0.2 },
+                        { label: 'Trend Grasso', data: calculateTrendline(fatVals), borderColor: 'rgba(251, 146, 60, 0.4)', borderDash: [5, 5], pointRadius: 0 }
+                    ]
+                }
+            });
+
+            // Grafico Massa Muscolare con Trend
+            const muscleVals = filteredBia.map(d => d.muscle_mass);
+            charts.muscle = new Chart(document.getElementById('muscleMassChart'), {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: 'Massa Muscolare (kg)', data: muscleVals, borderColor: '#4ade80', tension: 0.2 },
+                        { label: 'Trend Muscolo', data: calculateTrendline(muscleVals), borderColor: 'rgba(74, 222, 128, 0.4)', borderDash: [5, 5], pointRadius: 0 }
+                    ]
+                }
+            });
+
+            // Grafico Acqua Corporea %
+            const waterVals = filteredBia.map(d => d.body_water);
+            charts.water = new Chart(document.getElementById('waterChart'), {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{ label: 'Acqua (%)', data: waterVals, borderColor: '#2dd4bf', tension: 0.2 }]
+                }
+            });
         }
 
         document.addEventListener('DOMContentLoaded', loadBodyData);
