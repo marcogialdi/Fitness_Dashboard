@@ -31,3 +31,45 @@ function getLastValidMetric(records, field) {
     }
     return { val: '-', date: '' };
 }
+// -------------------------------------------------------------
+// FILTRO TEMPORALE SUI DATI
+// -------------------------------------------------------------
+function filterDataByRange(dataArray, dateField, range) {
+    if (!dataArray || !dataArray.length || range === 'all') return dataArray;
+
+    const now = new Date();
+    let cutoff = new Date();
+
+    if (range === '1w') cutoff.setDate(now.getDate() - 7);
+    else if (range === '1m') cutoff.setMonth(now.getMonth() - 1);
+    else if (range === '3m') cutoff.setMonth(now.getMonth() - 3);
+    else if (range === '6m') cutoff.setMonth(now.getMonth() - 6);
+
+    return dataArray.filter(item => {
+        const itemDate = new Date(item[dateField]);
+        return itemDate >= cutoff;
+    });
+}
+
+// -------------------------------------------------------------
+// CALCOLO LINEA DI TREND LINEARE PER CHART.JS
+// -------------------------------------------------------------
+function calculateTrendline(yValues) {
+    const validPoints = yValues.map((y, x) => (y !== null && !isNaN(y)) ? { x, y } : null).filter(p => p !== null);
+    if (validPoints.length < 2) return yValues.map(() => null);
+
+    const n = validPoints.length;
+    let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+
+    validPoints.forEach(p => {
+        sumX += p.x;
+        sumY += p.y;
+        sumXY += p.x * p.y;
+        sumXX += p.x * p.x;
+    });
+
+    const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+    const intercept = (sumY - slope * sumX) / n;
+
+    return yValues.map((_, x) => slope * x + intercept);
+}
