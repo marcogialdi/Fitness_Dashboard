@@ -25,17 +25,20 @@
 
     <div class="container">
         <h1 class="page-title">Panoramica Generale</h1>
-        <p class="page-subtitle">Sintesi dei principali KPI e trend di composizione corporea, allenamenti e recupero.</p>
+        <p class="page-subtitle">Sintesi dei principali KPI e trend di composizione corporea e recupero.</p>
 
-        <!-- KPI Sintetici Principali -->
-        <div class="kpi-grid" id="homeKpiContainer">
-            <div class="kpi-card"><div class="kpi-title">Peso Attuale</div><div class="kpi-value" style="color:var(--accent-blue);">--</div></div>
-            <div class="kpi-card"><div class="kpi-title">Massa Magra (LBM)</div><div class="kpi-value" style="color:var(--accent-teal);">--</div></div>
-            <div class="kpi-card"><div class="kpi-title">Massa Muscolare</div><div class="kpi-value" style="color:var(--accent-green);">--</div></div>
-            <div class="kpi-card"><div class="kpi-title">Massa Grassa %</div><div class="kpi-value" style="color:var(--accent-orange);">--</div></div>
+        <!-- Barra Filtri Temporali -->
+        <div class="filter-bar">
+            <span class="filter-label">Filtra Periodo:</span>
+            <button class="btn-filter" onclick="setFilter('1w')">1 Settimana</button>
+            <button class="btn-filter" onclick="setFilter('1m')">1 Mese</button>
+            <button class="btn-filter" onclick="setFilter('3m')">3 Mesi</button>
+            <button class="btn-filter" onclick="setFilter('6m')">6 Mesi</button>
+            <button class="btn-filter active" onclick="setFilter('all')">Tutto</button>
         </div>
 
-        <!-- Grafici Trend Sintetici -->
+        <div class="kpi-grid" id="homeKpiContainer"></div>
+
         <div class="charts-grid">
             <div class="chart-card">
                 <h3 style="color: var(--accent-blue); margin-top:0;">Trend Peso & Massa Muscolare</h3>
@@ -49,15 +52,36 @@
     </div>
 
     <script>
+        let rawBia = [], rawRingconn = [];
+        let currentFilter = 'all';
+        let charts = {};
+
+        function setFilter(range) {
+            currentFilter = range;
+            document.querySelectorAll('.btn-filter').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            renderPage();
+        }
+
         async function loadHomeData() {
             const { data: bia } = await supabaseClient.from('bia_measurements').select('*').order('measurement_time', { ascending: true });
             const { data: ringconn } = await supabaseClient.from('ringconn_weekly_reports').select('*').order('week_start', { ascending: true });
 
-            if (bia && bia.length) {
-                const w = getLastValidMetric(bia, 'weight');
-                const lbm = getLastValidMetric(bia, 'lean_body_mass');
-                const m = getLastValidMetric(bia, 'muscle_mass');
-                const f = getLastValidMetric(bia, 'body_fat_percentage');
+            rawBia = bia || [];
+            rawRingconn = ringconn || [];
+
+            renderPage();
+        }
+
+        function renderPage() {
+            Object.values(charts).forEach(c => c.destroy());
+
+            // KPI sempre aggiornati all'ultimo disponibile
+            if (rawBia.length) {
+                const w = getLastValidMetric(rawBia, 'weight');
+                const lbm = getLastValidMetric(rawBia, 'lean_body_mass');
+                const m = getLastValidMetric(rawBia, 'muscle_mass');
+                const f = getLastValidMetric(rawBia, 'body_fat_percentage');
 
                 document.getElementById('homeKpiContainer').innerHTML = `
                     <div class="kpi-card"><div class="kpi-title">Peso Attuale</div><div class="kpi-value" style="color:var(--accent-blue);">${w.val} kg</div><div class="kpi-date">${w.date}</div></div>
@@ -65,25 +89,42 @@
                     <div class="kpi-card"><div class="kpi-title">Massa Muscolare</div><div class="kpi-value" style="color:var(--accent-green);">${m.val} kg</div><div class="kpi-date">${m.date}</div></div>
                     <div class="kpi-card"><div class="kpi-title">Massa Grassa</div><div class="kpi-value" style="color:var(--accent-orange);">${f.val} %</div><div class="kpi-date">${f.date}</div></div>
                 `;
+            }
 
-                new Chart(document.getElementById('homeWeightChart'), {
+            // Filtraggio Dati per Grafici
+            const filteredBia = filterDataByRange(rawBia, 'measurement_time', currentFilter);
+            const filteredRc = filterDataByRange(rawRingconn, 'week_start', currentFilter);
+
+            // Grafico Peso con Linea di Trend
+            if (filteredBia.length) {
+                const weights = filteredBia.map(d => d.weight);
+                const trendWeight = calculateTrendline(weights);
+
+                charts.weight = new Chart(document.getElementById('homeWeightChart'), {
                     type: 'line',
                     data: {
-                        labels: bia.map(d => d.measurement_time ? d.measurement_time.split('T')[0] : ''),
+                        labels: filteredBia.map(d => d.measurement_time ? d.measurement_time.split('T')[0] : ''),
                         datasets: [
-                            { label: 'Peso (kg)', data: bia.map(d => d.weight), borderColor: '#38bdf8', tension: 0.2 },
-                            { label: 'Massa Muscolare (kg)', data: bia.map(d => d.muscle_mass), borderColor: '#4ade80', tension: 0.2 }
+                            { label: 'Peso (kg)', data: weights, borderColor: '#38bdf8', tension: 0.2 },
+                            { label: 'Trend Peso', data: trendWeight, borderColor: 'rgba(56, 189, 248, 0.4)', borderDash: [5, 5], pointRadius: 0, fill: false }
                         ]
                     }
                 });
             }
 
-            if (ringconn && ringconn.length) {
-                new Chart(document.getElementById('homeSleepChart'), {
+            // Grafico Sleep Score con Trend
+            if (filteredRc.length) {
+                const sleepScores = filteredRc.map(r => r.sleep_score);
+                const trendSleep = calculateTrendline(sleepScores);
+
+                charts.sleep = new Chart(document.getElementById('homeSleepChart'), {
                     type: 'line',
                     data: {
-                        labels: ringconn.map(r => r.label),
-                        datasets: [{ label: 'Sleep Score', data: ringconn.map(r => r.sleep_score), borderColor: '#ec4899', tension: 0.2 }]
+                        labels: filteredRc.map(r => r.label),
+                        datasets: [
+                            { label: 'Sleep Score', data: sleepScores, borderColor: '#ec4899', tension: 0.2 },
+                            { label: 'Trend Sonno', data: trendSleep, borderColor: 'rgba(236, 72, 153, 0.4)', borderDash: [5, 5], pointRadius: 0, fill: false }
+                        ]
                     }
                 });
             }
