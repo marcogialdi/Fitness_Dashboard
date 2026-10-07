@@ -147,3 +147,40 @@ body {
         grid-template-columns: 1fr; /* 1 sola colonna per smartphone */
     }
 }
+/* --- BARRA FILTRI DATA --- */
+.filter-bar {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 25px;
+    flex-wrap: wrap;
+    background: var(--card-bg);
+    padding: 12px 18px;
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    align-items: center;
+}
+
+.filter-label {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    font-weight: 600;
+    margin-right: 5px;
+}
+
+.btn-filter {
+    background: #0f172a;
+    border: 1px solid var(--border-color);
+    color: var(--text-muted);
+    padding: 6px 14px;
+    border-radius: 16px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+    transition: all 0.2s ease;
+}
+
+.btn-filter:hover, .btn-filter.active {
+    background: var(--accent-blue);
+    color: #0f172a;
+    border-color: var(--accent-blue);
+}
