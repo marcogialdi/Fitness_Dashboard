@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Body - Composizione Corporea</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/app.js"></script>
+</head>
+<body>
+
+    <header class="main-header">
+        <div class="logo">📊 Marco's Fitness Hub</div>
+        <button class="menu-toggle" onclick="toggleMenu()">☰</button>
+        <nav class="nav-menu" id="navMenu">
+            <a href="index.html" class="nav-link">Home</a>
+            <a href="body.html" class="nav-link active">Body</a>
+            <a href="workout.html" class="nav-link">Workout</a>
+            <a href="wellness.html" class="nav-link">Wellness</a>
+            <a href="upload.html" class="nav-link" style="color: var(--accent-green);">Carica Dati</a>
+        </nav>
+    </header>
+
+    <div class="container">
+        <h1 class="page-title">Composizione Corporea (BIA)</h1>
+        <p class="page-subtitle">Analisi dettagliata delle metriche di peso, massa magra, muscolare e percentuale di grasso.</p>
+
+        <!-- KPI Cards BIA -->
+        <div class="kpi-grid" id="bodyKpiContainer">
+            <div class="kpi-card"><div class="kpi-title">Peso Attuale</div><div class="kpi-value" style="color:var(--accent-blue);">--</div></div>
+            <div class="kpi-card"><div class="kpi-title">Massa Magra (LBM)</div><div class="kpi-value" style="color:var(--accent-teal);">--</div></div>
+            <div class="kpi-card"><div class="kpi-title">Massa Muscolare</div><div class="kpi-value" style="color:var(--accent-green);">--</div></div>
+            <div class="kpi-card"><div class="kpi-title">Massa Grassa %</div><div class="kpi-value" style="color:var(--accent-orange);">--</div></div>
+        </div>
+
+        <!-- Grafici Dettagliati BIA -->
+        <div class="charts-grid">
+            <div class="chart-card">
+                <h3 style="color: var(--accent-blue); margin-top:0;">Evoluzione Peso & Massa Magra (kg)</h3>
+                <canvas id="weightLbmChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3 style="color: var(--accent-orange); margin-top:0;">Percentuale Massa Grassa (%)</h3>
+                <canvas id="fatPercentageChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3 style="color: var(--accent-green); margin-top:0;">Massa Muscolare (kg)</h3>
+                <canvas id="muscleMassChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3 style="color: var(--accent-teal); margin-top:0;">Acqua Corporea & BMR</h3>
+                <canvas id="waterBmrChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function loadBodyData() {
+            const { data: bia } = await supabaseClient.from('bia_measurements').select('*').order('measurement_time', { ascending: true });
+
+            if (bia && bia.length) {
+                const w = getLastValidMetric(bia, 'weight');
+                const lbm = getLastValidMetric(bia, 'lean_body_mass');
+                const m = getLastValidMetric(bia, 'muscle_mass');
+                const f = getLastValidMetric(bia, 'body_fat_percentage');
+
+                document.getElementById('bodyKpiContainer').innerHTML = `
+                    <div class="kpi-card"><div class="kpi-title">Peso Attuale</div><div class="kpi-value" style="color:var(--accent-blue);">${w.val} kg</div><div class="kpi-date">${w.date ? 'Dato del: ' + w.date : ''}</div></div>
+                    <div class="kpi-card"><div class="kpi-title">Massa Magra (LBM)</div><div class="kpi-value" style="color:var(--accent-teal);">${lbm.val} kg</div><div class="kpi-date">${lbm.date ? 'Dato del: ' + lbm.date : ''}</div></div>
+                    <div class="kpi-card"><div class="kpi-title">Massa Muscolare</div><div class="kpi-value" style="color:var(--accent-green);">${m.val} kg</div><div class="kpi-date">${m.date ? 'Dato del: ' + m.date : ''}</div></div>
+                    <div class="kpi-card"><div class="kpi-title">Massa Grassa</div><div class="kpi-value" style="color:var(--accent-orange);">${f.val} %</div><div class="kpi-date">${f.date ? 'Dato del: ' + f.date : ''}</div></div>
+                `;
+
+                const labels = bia.map(d => d.measurement_time ? d.measurement_time.split('T')[0] : '');
+
+                // Grafico 1: Peso e LBM
+                new Chart(document.getElementById('weightLbmChart'), {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            { label: 'Peso (kg)', data: bia.map(d => d.weight), borderColor: '#38bdf8', tension: 0.2 },
+                            { label: 'Massa Magra (kg)', data: bia.map(d => d.lean_body_mass), borderColor: '#2dd4bf', tension: 0.2 }
+                        ]
+                    }
+                });
+
+                // Grafico 2: Grasso %
+                new Chart(document.getElementById('fatPercentageChart'), {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{ label: 'Massa Grassa (%)', data: bia.map(d => d.body_fat_percentage), borderColor: '#fb923c', backgroundColor: 'rgba(251, 146, 60, 0.1)', fill: true, tension: 0.2 }]
+                    }
+                });
+
+                // Grafico 3: Massa Muscolare
+                new Chart(document.getElementById('muscleMassChart'), {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{ label: 'Massa Muscolare (kg)', data: bia.map(d => d.muscle_mass), borderColor: '#4ade80', tension: 0.2 }]
+                    }
+                });
+
+                // Grafico 4: Acqua Corporea
+                new Chart(document.getElementById('waterBmrChart'), {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{ label: 'Acqua Corporea (%)', data: bia.map(d => d.body_water), borderColor: '#38bdf8', tension: 0.2 }]
+                    }
+                });
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', loadBodyData);
+    </script>
+</body>
+</html>
