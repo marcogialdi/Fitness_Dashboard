@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carica Dati - Fitness Hub</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/app.js"></script>
+    <style>
+        .upload-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 25px;
+        }
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+            margin-top: 15px;
+        }
+        .form-group { display: flex; flex-direction: column; gap: 4px; }
+        .form-group label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; }
+        .form-group input { background: #0f172a; border: 1px solid var(--border-color); color: #fff; padding: 8px 12px; border-radius: 8px; }
+        .btn-submit { background: var(--accent-pink); color: #fff; border: none; padding: 12px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-top: 15px; }
+        .btn-import-big { background: var(--accent-green); color: #0f172a; border: none; padding: 15px 25px; border-radius: 8px; font-size: 1rem; font-weight: bold; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <header class="main-header">
+        <div class="logo">📊 Marco's Fitness Hub</div>
+        <button class="menu-toggle" onclick="toggleMenu()">☰</button>
+        <nav class="nav-menu" id="navMenu">
+            <a href="index.html" class="nav-link">Home</a>
+            <a href="body.html" class="nav-link">Body</a>
+            <a href="workout.html" class="nav-link">Workout</a>
+            <a href="wellness.html" class="nav-link">Wellness</a>
+            <a href="upload.html" class="nav-link active">Carica Dati</a>
+        </nav>
+    </header>
+
+    <div class="container">
+        <h1 class="page-title">Gestione & Caricamento Dati</h1>
+        <p class="page-subtitle">Sincronizzazione massiva e inserimento manuale report.</p>
+
+        <!-- Sezione Importazione Massiva CSV -->
+        <div class="upload-card">
+            <h2 style="color: var(--accent-green); margin-top: 0;">📁 Importazione Massiva CSV (Hevy / BIA)</h2>
+            <p style="color: var(--text-muted); font-size: 0.9rem;">Carica il file CSV storico completo scaricato da Hevy o dalla bilancia BIA. La procedura svuoterà la tabella relativa e la sovrascriverà con i nuovi dati in modo pulito.</p>
+            
+            <input type="file" id="csvFileInput" accept=".csv" style="display: none;" onchange="handleMassiveImport(event)">
+            <button class="btn-import-big" onclick="document.getElementById('csvFileInput').click()">
+                Seleziona File CSV (Hevy / BIA)
+            </button>
+        </div>
+
+        <!-- Sezione Inserimento Manuale RingConn -->
+        <div class="upload-card">
+            <h2 style="color: var(--accent-pink); margin-top: 0;">💍 Inserimento Report Settimanale RingConn</h2>
+            <p style="color: var(--text-muted); font-size: 0.9rem;">Inserisci i dati letti dal report PDF dell'app RingConn.</p>
+
+            <form id="ringconnForm" onsubmit="handleRingConnSubmit(event)">
+                <div class="form-grid">
+                    <div class="form-group"><label>Etichetta Settimana</label><input type="text" id="rc_label" placeholder="es. 21/09-27/09" required></div>
+                    <div class="form-group"><label>Inizio Settimana</label><input type="date" id="rc_week_start"></div>
+                    <div class="form-group"><label>Fine Settimana</label><input type="date" id="rc_week_end"></div>
+                    <div class="form-group"><label>Sleep Score</label><input type="number" id="rc_sleep_score"></div>
+                    <div class="form-group"><label>Sleep Duration</label><input type="text" id="rc_sleep_duration" placeholder="es. 7h 30m"></div>
+                    <div class="form-group"><label>Sleep HR Avg</label><input type="number" id="rc_sleep_hr_avg"></div>
+                    <div class="form-group"><label>Activity Score</label><input type="number" id="rc_activity_score"></div>
+                    <div class="form-group"><label>Passi Medi</label><input type="number" id="rc_steps_avg"></div>
+                    <div class="form-group"><label>Calorie Medie</label><input type="number" id="rc_calories_avg"></div>
+                    <div class="form-group"><label>Stress Score</label><input type="number" id="rc_stress_score"></div>
+                </div>
+                <button type="submit" class="btn-submit">💾 Salva Report RingConn</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Funzione Importazione Massiva CSV con Sovrascrittura Totale
+        async function handleMassiveImport(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            Papa.parse(file, {
+                header: true,
+                skipEmptyLines: true,
+                complete: async function(results) {
+                    const data = results.data;
+                    const headers = results.meta.fields;
+
+                    // A. WORKOUTS (Hevy)
+                    if (headers.includes('title') && headers.includes('start_time') && headers.includes('set_index')) {
+                        const formattedWorkouts = data.map(r => ({
+                            title: r.title || null,
+                            start_time: parseHevyDate(r.start_time),
+                            end_time: parseHevyDate(r.end_time),
+                            description: r.description || null,
+                            exercise_title: r.exercise_title,
+                            superset_id: r.superset_id ? parseInt(r.superset_id) : null,
+                            exercise_notes: r.exercise_notes || null,
+                            set_index: parseInt(r.set_index),
+                            set_type: r.set_type || 'normal',
+                            weight_kg: r.weight_kg ? parseFloat(r.weight_kg) : null,
+                            reps: r.reps ? parseInt(r.reps) : null,
+                            distance_km: r.distance_km ? parseFloat(r.distance_km) : null,
+                            duration_seconds: r.duration_seconds ? parseFloat(r.duration_seconds) : null,
+                            rpe: r.rpe ? parseFloat(r.rpe) : null
+                        })).filter(r => r.start_time && r.exercise_title && !isNaN(r.set_index));
+
+                        await supabaseClient.from('workouts').delete().neq('id', 0);
+                        const { error } = await supabaseClient.from('workouts').insert(formattedWorkouts);
+                        if (error) alert("❌ Errore Workouts: " + error.message);
+                        else alert("✅ Allenamenti Hevy sovrascritti con successo!");
+                    }
+                    // B. BIA
+                    else if (headers.includes('Time') && headers.includes('Weight')) {
+                        const rawBIA = data.map(r => {
+                            const rawTime = r['Time'];
+                            if (!rawTime || String(rawTime).trim() === '') return null;
+                            const dateObj = new Date(rawTime);
+                            const parsedDate = isNaN(dateObj.getTime()) ? null : dateObj.toISOString();
+                            return parsedDate ? {
+                                measurement_time: parsedDate,
+                                weight: r['Weight'] ? parseFloat(r['Weight']) : null,
+                                bmi: r['BMI'] ? parseFloat(r['BMI']) : null,
+                                body_fat_percentage: r['Body Fat Percentage'] ? parseFloat(r['Body Fat Percentage']) : null,
+                                subcutaneous_fat: r['Subcutaneous Fat'] ? parseFloat(r['Subcutaneous Fat']) : null,
+                                heart_rate: r['Heart Rate'] ? parseInt(r['Heart Rate']) : null,
+                                visceral_fat: r['Visceral Fat'] ? parseInt(r['Visceral Fat']) : null,
+                                body_water: r['Body Water'] ? parseFloat(r['Body Water']) : null,
+                                muscle_mass: r['Muscle Mass'] ? parseFloat(r['Muscle Mass']) : null,
+                                bone_mass: r['Bone Mass'] ? parseFloat(r['Bone Mass']) : null,
+                                basal_metabolism: r['Basal Metabolism'] ? parseInt(r['Basal Metabolism']) : null,
+                                lean_body_mass: r['Lean Body Mass'] ? parseFloat(r['Lean Body Mass']) : null,
+                                body_score: r['Body Score'] ? parseInt(r['Body Score']) : null
+                            } : null;
+                        }).filter(r => r !== null);
+
+                        const uniqueMap = new Map();
+                        rawBIA.forEach(item => uniqueMap.set(item.measurement_time, item));
+                        const formattedBIA = Array.from(uniqueMap.values());
+
+                        await supabaseClient.from('bia_measurements').delete().neq('id', 0);
+                        const { error } = await supabaseClient.from('bia_measurements').insert(formattedBIA);
+                        if (error) alert("❌ Errore BIA: " + error.message);
+                        else alert("✅ BIA sovrascritta con successo!");
+                    } else {
+                        alert("⚠️ Formato file non riconosciuto.");
+                    }
+                }
+            });
+        }
+
+        // Funzione Salva RingConn
+        async function handleRingConnSubmit(event) {
+            event.preventDefault();
+            const record = {
+                label: document.getElementById('rc_label').value.trim(),
+                week_start: document.getElementById('rc_week_start').value || null,
+                week_end: document.getElementById('rc_week_end').value || null,
+                sleep_score: document.getElementById('rc_sleep_score').value ? parseInt(document.getElementById('rc_sleep_score').value) : null,
+                sleep_duration: document.getElementById('rc_sleep_duration').value.trim() || null,
+                sleep_hr_avg: document.getElementById('rc_sleep_hr_avg').value ? parseInt(document.getElementById('rc_sleep_hr_avg').value) : null,
+                activity_score: document.getElementById('rc_activity_score').value ? parseInt(document.getElementById('rc_activity_score').value) : null,
+                steps_avg: document.getElementById('rc_steps_avg').value ? parseInt(document.getElementById('rc_steps_avg').value) : null,
+                calories_avg: document.getElementById('rc_calories_avg').value ? parseInt(document.getElementById('rc_calories_avg').value) : null,
+                stress_score: document.getElementById('rc_stress_score').value ? parseInt(document.getElementById('rc_stress_score').value) : null
+            };
+
+            const { error } = await supabaseClient.from('ringconn_weekly_reports').upsert([record], { onConflict: 'label' });
+            if (error) alert("❌ Errore: " + error.message);
+            else { alert("✅ Report RingConn salvato!"); document.getElementById('ringconnForm').reset(); }
+        }
+    </script>
+</body>
+</html>
