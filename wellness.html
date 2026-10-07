@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wellness - Recupero & RingConn</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/app.js"></script>
+</head>
+<body>
+
+    <header class="main-header">
+        <div class="logo">📊 Marco's Fitness Hub</div>
+        <button class="menu-toggle" onclick="toggleMenu()">☰</button>
+        <nav class="nav-menu" id="navMenu">
+            <a href="index.html" class="nav-link">Home</a>
+            <a href="body.html" class="nav-link">Body</a>
+            <a href="workout.html" class="nav-link">Workout</a>
+            <a href="wellness.html" class="nav-link active">Wellness</a>
+            <a href="upload.html" class="nav-link" style="color: var(--accent-green);">Carica Dati</a>
+        </nav>
+    </header>
+
+    <div class="container">
+        <h1 class="page-title">Salute & Recupero (RingConn)</h1>
+        <p class="page-subtitle">Analisi dei report settimanali di sonno, frequenza cardiaca a riposo, passi e livelli di stress.</p>
+
+        <!-- KPI RingConn -->
+        <div class="kpi-grid" id="wellnessKpiContainer">
+            <div class="kpi-card"><div class="kpi-title">Ultimo Sleep Score</div><div class="kpi-value" id="kpiSleepScore" style="color:var(--accent-pink);">--</div></div>
+            <div class="kpi-card"><div class="kpi-title">Passi Medi Settimanali</div><div class="kpi-value" id="kpiAvgSteps" style="color:var(--accent-blue);">--</div></div>
+            <div class="kpi-card"><div class="kpi-title">FC Media Notturna</div><div class="kpi-value" id="kpiAvgHr" style="color:var(--accent-teal);">-- bpm</div></div>
+            <div class="kpi-card"><div class="kpi-title">Livello di Stress</div><div class="kpi-value" id="kpiAvgStress" style="color:var(--accent-orange);">--</div></div>
+        </div>
+
+        <!-- Grafici Wellness -->
+        <div class="charts-grid">
+            <div class="chart-card">
+                <h3 style="color: var(--accent-pink); margin-top:0;">Andamento Sleep Score</h3>
+                <canvas id="sleepScoreChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3 style="color: var(--accent-blue); margin-top:0;">Passi Medi Settimanali</h3>
+                <canvas id="stepsChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function loadWellnessData() {
+            const { data: ringconn } = await supabaseClient.from('ringconn_weekly_reports').select('*').order('week_start', { ascending: true });
+
+            if (ringconn && ringconn.length) {
+                const latest = ringconn[ringconn.length - 1];
+                
+                document.getElementById('kpiSleepScore').innerText = latest.sleep_score || '-';
+                document.getElementById('kpiAvgSteps').innerText = latest.steps_avg ? latest.steps_avg.toLocaleString('it-IT') : '-';
+                document.getElementById('kpiAvgHr').innerText = latest.sleep_hr_avg ? latest.sleep_hr_avg + ' bpm' : '-';
+                document.getElementById('kpiAvgStress').innerText = latest.stress_score || '-';
+
+                const labels = ringconn.map(r => r.label);
+
+                // Grafico Sleep Score
+                new Chart(document.getElementById('sleepScoreChart'), {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{ label: 'Sleep Score', data: ringconn.map(r => r.sleep_score), borderColor: '#ec4899', backgroundColor: 'rgba(236, 72, 153, 0.1)', fill: true, tension: 0.2 }]
+                    }
+                });
+
+                // Grafico Passi
+                new Chart(document.getElementById('stepsChart'), {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{ label: 'Passi Medi', data: ringconn.map(r => r.steps_avg), backgroundColor: '#38bdf8', borderRadius: 6 }]
+                    }
+                });
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', loadWellnessData);
+    </script>
+</body>
+</html>
