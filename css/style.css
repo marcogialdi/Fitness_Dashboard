@@ -184,3 +184,42 @@ body {
     color: #0f172a;
     border-color: var(--accent-blue);
 }
+
+/* --- BARRA STANDPOINT / ULTIMO AGGIORNAMENTO --- */
+.standpoint-bar {
+    display: flex;
+    gap: 15px;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    padding: 10px 18px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    align-items: center;
+    font-size: 0.82rem;
+}
+
+.standpoint-title {
+    color: var(--text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-right: 5px;
+}
+
+.standpoint-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: #0f172a;
+    padding: 4px 10px;
+    border-radius: 14px;
+    border: 1px solid var(--border-color);
+}
+
+.standpoint-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background-color: var(--accent-green);
+}
