@@ -73,3 +73,62 @@ function calculateTrendline(yValues) {
 
     return yValues.map((_, x) => slope * x + intercept);
 }
+
+// FUNZIONE PER CARICARE E MOSTRARE GLI STANDPOINT (ULTIMO AGGIORNAMENTO DB)
+async function renderStandpointBar() {
+    const container = document.getElementById('standpointContainer');
+    if (!container) return;
+
+    // 1. Recupero ultimo orario BIA
+    const { data: bia } = await supabaseClient
+        .from('bia_measurements')
+        .select('measurement_time')
+        .order('measurement_time', { ascending: false })
+        .limit(1);
+
+    // 2. Recupero ultimo orario Workouts
+    const { data: wkt } = await supabaseClient
+        .from('workouts')
+        .select('start_time')
+        .order('start_time', { ascending: false })
+        .limit(1);
+
+    // 3. Recupero ultima data RingConn
+    const { data: rc } = await supabaseClient
+        .from('ringconn_weekly_reports')
+        .select('week_end, week_start')
+        .order('week_start', { ascending: false })
+        .limit(1);
+
+    // Formattazione Date
+    const formatDate = (isoStr) => {
+        if (!isoStr) return 'N.D.';
+        const d = new Date(isoStr);
+        return isNaN(d.getTime()) ? 'N.D.' : d.toLocaleDateString('it-IT');
+    };
+
+    const lastBia = (bia && bia.length) ? formatDate(bia[0].measurement_time) : 'N.D.';
+    const lastWkt = (wkt && wkt.length) ? formatDate(wkt[0].start_time) : 'N.D.';
+    const lastRc = (rc && rc.length) ? formatDate(rc[0].week_end || rc[0].week_start) : 'N.D.';
+
+    container.innerHTML = `
+        <div class="standpoint-bar">
+            <span class="standpoint-title">📌 Ultimo Aggiornamento DB:</span>
+            <div class="standpoint-badge">
+                <span class="standpoint-dot"></span>
+                <span style="color: var(--text-muted);">BIA:</span>
+                <strong style="color: var(--accent-blue);">${lastBia}</strong>
+            </div>
+            <div class="standpoint-badge">
+                <span class="standpoint-dot"></span>
+                <span style="color: var(--text-muted);">Workouts:</span>
+                <strong style="color: var(--accent-yellow);">${lastWkt}</strong>
+            </div>
+            <div class="standpoint-badge">
+                <span class="standpoint-dot"></span>
+                <span style="color: var(--text-muted);">RingConn:</span>
+                <strong style="color: var(--accent-pink);">${lastRc}</strong>
+            </div>
+        </div>
+    `;
+}
