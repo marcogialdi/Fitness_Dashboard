@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Workout - Registro & Gruppi Muscolari</title>
+    <title>Workout - Registro & Analisi Carichi</title>
     <link rel="stylesheet" href="css/style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -24,8 +24,11 @@
     </header>
 
     <div class="container">
-        <h1 class="page-title">Allenamenti & Analisi Schede A-B-C-D</h1>
-        <p class="page-subtitle">Ripartizione automatica di serie e volumi basata sulle schede A, B, C e D.</p>
+        <!-- BARRA STANDPOINT DINAMICA -->
+        <div id="standpointContainer"></div>
+
+        <h1 class="page-title">Allenamenti & Progressione Carichi</h1>
+        <p class="page-subtitle">Analisi dei volumi sollevati, numero di serie ed efficienza del sovraccarico progressivo.</p>
 
         <!-- Barra Filtri Temporali -->
         <div class="filter-bar">
@@ -56,14 +59,16 @@
             </div>
         </div>
 
-        <!-- Grafici per Gruppi Muscolari & Schede -->
+        <!-- Grafici Workout -->
         <div class="charts-grid">
+            <!-- NUOVO GRAFICO: Relazione tra Volume (kg) e Numero di Serie (Doppio Asse Y) -->
             <div class="chart-card">
-                <h3 style="color: var(--accent-teal); margin-top:0;">Frequenza Schede (A, B, C, D)</h3>
-                <canvas id="routineCountChart"></canvas>
+                <h3 style="color: var(--accent-yellow); margin-top:0;">Evoluzione Volume (kg) vs Numero Serie</h3>
+                <canvas id="volumeVsSetsChart"></canvas>
             </div>
+            <!-- Grafico Serie per Gruppo Muscolare -->
             <div class="chart-card">
-                <h3 style="color: var(--accent-yellow); margin-top:0;">Serie Eseguite per Gruppo Muscolare</h3>
+                <h3 style="color: var(--accent-teal); margin-top:0;">Serie Eseguite per Gruppo Muscolare</h3>
                 <canvas id="muscleSetsChart"></canvas>
             </div>
         </div>
@@ -104,17 +109,6 @@
             renderPage();
         }
 
-        // Funzione per identificare il tipo di scheda (A, B, C, D) dal titolo
-        function getRoutineType(title) {
-            if (!title) return 'Altro';
-            const t = title.toUpperCase();
-            if (t.includes('A')) return 'Scheda A';
-            if (t.includes('B')) return 'Scheda B';
-            if (t.includes('C')) return 'Scheda C';
-            if (t.includes('D')) return 'Scheda D';
-            return 'Altro';
-        }
-
         function renderPage() {
             Object.values(charts).forEach(c => c.destroy());
 
@@ -132,35 +126,23 @@
             filteredWorkouts.forEach(w => { totalVol += (w.weight_kg || 0) * (w.reps || 0); });
             document.getElementById('kpiTotalVolume').innerText = Math.round(totalVol).toLocaleString('it-IT') + ' kg';
 
-            // 3. Conteggio Frequenza Schede A, B, C, D e Ripartizione Muscolare
-            const routineCounts = { 'Scheda A': 0, 'Scheda B': 0, 'Scheda C': 0, 'Scheda D': 0, 'Altro': 0 };
-            
-            // Inizializzazione gruppi muscolari
+            // 3. Aggregazione per Data (Volume Totale e Serie Totali per Sessione)
+            const groupsByDate = {};
             const muscleStats = {
-                'Petto': 0,
-                'Spalle': 0,
-                'Bicipiti': 0,
-                'Tricipiti': 0,
-                'Schiena': 0,
-                'Glutei/Gambe': 0,
-                'Addome': 0
+                'Petto': 0, 'Spalle': 0, 'Bicipiti': 0, 'Tricipiti': 0, 'Schiena': 0, 'Glutei/Gambe': 0, 'Addome': 0
             };
 
-            // Aggregazione per sessione e raggruppamento
-            const groupsByDate = {};
             filteredWorkouts.forEach(w => {
                 const date = w.start_time.split('T')[0];
                 if (!groupsByDate[date]) {
                     groupsByDate[date] = { date, title: w.title || 'Allenamento', volume: 0, sets: 0, reps: 0 };
-                    const routine = getRoutineType(w.title);
-                    if (routineCounts[routine] !== undefined) routineCounts[routine] += 1;
                 }
 
                 groupsByDate[date].volume += (w.weight_kg || 0) * (w.reps || 0);
                 groupsByDate[date].sets += 1;
                 groupsByDate[date].reps += (w.reps || 0);
 
-                // Assegnazione della serie al gruppo muscolare corrispondente
+                // Mappatura gruppi muscolari per il secondo grafico
                 const exerciseName = (w.exercise_title || '').toLowerCase();
                 if (exerciseName.includes('bench') || exerciseName.includes('panca') || exerciseName.includes('chest') || exerciseName.includes('fly') || exerciseName.includes('dip')) {
                     muscleStats['Petto'] += 1;
@@ -179,19 +161,67 @@
                 }
             });
 
-            // Grafico 1: Distribuzione Schede A, B, C, D
-            charts.routines = new Chart(document.getElementById('routineCountChart'), {
-                type: 'doughnut',
+            const sortedDates = Object.values(groupsByDate).sort((a,b) => a.date.localeCompare(b.date));
+            const dateLabels = sortedDates.map(d => d.date);
+            const volumeValues = sortedDates.map(d => Math.round(d.volume));
+            const setsValues = sortedDates.map(d => d.sets);
+
+            // -------------------------------------------------------------
+            // GRAFICO 1: Volume (kg) vs Numero Serie (Doppio Asse Y)
+            // -------------------------------------------------------------
+            charts.volumeVsSets = new Chart(document.getElementById('volumeVsSetsChart'), {
+                type: 'bar',
                 data: {
-                    labels: Object.keys(routineCounts).filter(k => routineCounts[k] > 0),
-                    datasets: [{
-                        data: Object.values(routineCounts).filter(v => v > 0),
-                        backgroundColor: ['#38bdf8', '#4ade80', '#fb923c', '#ec4899', '#94a3b8']
-                    }]
+                    labels: dateLabels,
+                    datasets: [
+                        {
+                            type: 'bar',
+                            label: 'Volume Totale (kg)',
+                            data: volumeValues,
+                            backgroundColor: 'rgba(250, 204, 21, 0.7)',
+                            borderColor: '#facc15',
+                            borderWidth: 1,
+                            yAxisID: 'yVolume',
+                            borderRadius: 4
+                        },
+                        {
+                            type: 'line',
+                            label: 'Numero di Serie',
+                            data: setsValues,
+                            borderColor: '#38bdf8',
+                            backgroundColor: '#38bdf8',
+                            borderWidth: 2,
+                            pointRadius: 3,
+                            tension: 0.2,
+                            yAxisID: 'ySets'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } },
+                        yVolume: {
+                            type: 'linear',
+                            position: 'left',
+                            title: { display: true, text: 'Volume (kg)', color: '#facc15' },
+                            ticks: { color: '#facc15' },
+                            grid: { color: '#334155' }
+                        },
+                        ySets: {
+                            type: 'linear',
+                            position: 'right',
+                            title: { display: true, text: 'N° Serie', color: '#38bdf8' },
+                            ticks: { color: '#38bdf8' },
+                            grid: { drawOnChartArea: false } // evita la sovrapposizione delle linee di griglia
+                        }
+                    }
                 }
             });
 
-            // Grafico 2: Serie Totali Eseguite per Gruppo Muscolare
+            // -------------------------------------------------------------
+            // GRAFICO 2: Serie Totali per Gruppo Muscolare
+            // -------------------------------------------------------------
             charts.muscles = new Chart(document.getElementById('muscleSetsChart'), {
                 type: 'bar',
                 data: {
@@ -199,28 +229,36 @@
                     datasets: [{
                         label: 'Numero di Serie',
                         data: Object.values(muscleStats),
-                        backgroundColor: '#facc15',
+                        backgroundColor: '#2dd4bf',
                         borderRadius: 6
                     }]
+                },
+                options: {
+                    scales: {
+                        x: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } },
+                        y: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } }
+                    }
                 }
             });
 
             // 4. Popola Tabella Registro Sessioni
-            const sortedDates = Object.values(groupsByDate).sort((a,b) => b.date.localeCompare(a.date));
             const tbody = document.getElementById('workoutTableBody');
             tbody.innerHTML = '';
-            sortedDates.forEach(w => {
+            [...sortedDates].reverse().forEach(w => {
                 tbody.innerHTML += `<tr style="border-bottom: 1px solid var(--border-color);">
                     <td style="padding: 10px; color: var(--accent-blue); font-weight: bold;">${w.date}</td>
                     <td style="padding: 10px;">${w.title}</td>
-                    <td style="padding: 10px; color: var(--accent-yellow); font-weight: bold;">${Math.round(w.volume).toLocaleString('it-IT')} kg</td>
+                    <td style="padding: 10px; color: var(--accent-yellow); font-weight: bold;">${w.volume.toLocaleString('it-IT')} kg</td>
                     <td style="padding: 10px;">${w.sets} serie</td>
                     <td style="padding: 10px;">${w.reps} reps</td>
                 </tr>`;
             });
         }
 
-        document.addEventListener('DOMContentLoaded', loadWorkoutData);
+        document.addEventListener('DOMContentLoaded', async () => {
+            if (typeof renderStandpointBar === 'function') await renderStandpointBar();
+            await loadWorkoutData();
+        });
     </script>
 </body>
 </html>
