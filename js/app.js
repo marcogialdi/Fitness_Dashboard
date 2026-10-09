@@ -146,20 +146,18 @@ function aggregateWorkoutData(dataArray, groupBy) {
 
         let key = '';
         if (groupBy === 'week') {
-            // Primo giorno della settimana (Lunedì)
             const day = d.getDay() || 7;
             const monday = new Date(d);
             monday.setDate(d.getDate() - day + 1);
             key = `Sett. ${monday.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' })}`;
         } else if (groupBy === 'month') {
-            // Mese e Anno
             key = d.toLocaleDateString('it-IT', { month: 'short', year: '2-digit' });
         } else if (groupBy === 'halfyear') {
-            // Semestre
+            // In JS i mesi vanno da 0 (Gennaio) a 11 (Dicembre)
+            // 0..5 -> Gennaio..Giugno (S1), 6..11 -> Luglio..Dicembre (S2)
             const semester = d.getMonth() < 6 ? 'S1' : 'S2';
             key = `${semester} ${d.getFullYear()}`;
         } else if (groupBy === 'year') {
-            // Anno
             key = `${d.getFullYear()}`;
         }
 
