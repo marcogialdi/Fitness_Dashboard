@@ -132,3 +132,45 @@ async function renderStandpointBar() {
         </div>
     `;
 }
+// -------------------------------------------------------------
+// AGGREGAZIONE TEMPORALE (Settimanale, Mensile, Semestrale, Annuale)
+// -------------------------------------------------------------
+function aggregateWorkoutData(dataArray, groupBy) {
+    if (!dataArray || !dataArray.length || groupBy === 'session') return dataArray;
+
+    const groups = {};
+
+    dataArray.forEach(item => {
+        const d = new Date(item.date);
+        if (isNaN(d.getTime())) return;
+
+        let key = '';
+        if (groupBy === 'week') {
+            // Primo giorno della settimana (Lunedì)
+            const day = d.getDay() || 7;
+            const monday = new Date(d);
+            monday.setDate(d.getDate() - day + 1);
+            key = `Sett. ${monday.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' })}`;
+        } else if (groupBy === 'month') {
+            // Mese e Anno
+            key = d.toLocaleDateString('it-IT', { month: 'short', year: '2-digit' });
+        } else if (groupBy === 'halfyear') {
+            // Semestre
+            const semester = d.getMonth() < 6 ? 'S1' : 'S2';
+            key = `${semester} ${d.getFullYear()}`;
+        } else if (groupBy === 'year') {
+            // Anno
+            key = `${d.getFullYear()}`;
+        }
+
+        if (!groups[key]) {
+            groups[key] = { label: key, volume: 0, sets: 0, count: 0, rawDate: d };
+        }
+
+        groups[key].volume += item.volume;
+        groups[key].sets += item.sets;
+        groups[key].count += 1;
+    });
+
+    return Object.values(groups);
+}
