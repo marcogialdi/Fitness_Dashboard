@@ -61,13 +61,13 @@
         <p class="page-subtitle">Analisi dei volumi sollevati, numero di serie ed efficienza del sovraccarico progressivo.</p>
 
         <!-- Barra Filtri Temporali -->
-        <div class="filter-bar">
+        <div class="filter-bar" id="periodFilterBar">
             <span class="filter-label">Filtra Periodo:</span>
             <button class="btn-filter" onclick="setFilter('1w')">1 Settimana</button>
             <button class="btn-filter" onclick="setFilter('1m')">1 Mese</button>
             <button class="btn-filter" onclick="setFilter('3m')">3 Mesi</button>
             <button class="btn-filter" onclick="setFilter('6m')">6 Mesi</button>
-            <button class="btn-filter active" onclick="setFilter('all')">Tutto</button>
+            <button class="btn-filter active" id="btnFilterAll" onclick="setFilter('all')">Tutto</button>
         </div>
 
         <!-- BARRA ZOOM / AGGREGAZIONE GRAFICI -->
@@ -135,15 +135,64 @@
         let currentZoom = 'session';
         let charts = {};
 
+        // -------------------------------------------------------------
+        // LOGICA DI AGGREGAZIONE TEMPORALE (Zoom)
+        // -------------------------------------------------------------
+        function aggregateWorkoutData(dataArray, groupBy) {
+            if (!dataArray || !dataArray.length || groupBy === 'session') return dataArray;
+
+            const groups = {};
+
+            dataArray.forEach(item => {
+                const d = new Date(item.date);
+                if (isNaN(d.getTime())) return;
+
+                let key = '';
+                if (groupBy === 'week') {
+                    const day = d.getDay() || 7;
+                    const monday = new Date(d);
+                    monday.setDate(d.getDate() - day + 1);
+                    key = `Sett. ${monday.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' })}`;
+                } else if (groupBy === 'month') {
+                    key = d.toLocaleDateString('it-IT', { month: 'short', year: '2-digit' });
+                } else if (groupBy === 'halfyear') {
+                    // Mesi JS: 0..5 (Jan-Jun) = S1, 6..11 (Jul-Dec) = S2
+                    const semester = d.getMonth() < 6 ? 'S1' : 'S2';
+                    key = `${semester} ${d.getFullYear()}`;
+                } else if (groupBy === 'year') {
+                    key = `${d.getFullYear()}`;
+                }
+
+                if (!groups[key]) {
+                    groups[key] = { label: key, volume: 0, sets: 0, count: 0, date: item.date };
+                }
+
+                groups[key].volume += item.volume;
+                groups[key].sets += item.sets;
+                groups[key].count += 1;
+            });
+
+            return Object.values(groups);
+        }
+
         function setFilter(range) {
             currentFilter = range;
-            document.querySelectorAll('.filter-bar:not([style*="accent-yellow"]) .btn-filter').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('#periodFilterBar .btn-filter').forEach(btn => btn.classList.remove('active'));
             event.target.classList.add('active');
             renderPage();
         }
 
         function setZoom(zoomLevel) {
             currentZoom = zoomLevel;
+
+            // Se attiviamo lo zoom Semestrale o Annuale, forziamo il periodo su "Tutto"
+            if (zoomLevel === 'halfyear' || zoomLevel === 'year') {
+                currentFilter = 'all';
+                document.querySelectorAll('#periodFilterBar .btn-filter').forEach(btn => btn.classList.remove('active'));
+                const btnAll = document.getElementById('btnFilterAll');
+                if (btnAll) btnAll.classList.add('active');
+            }
+
             document.querySelectorAll('.btn-zoom').forEach(btn => btn.classList.remove('active'));
             event.target.classList.add('active');
             renderPage();
@@ -163,7 +212,7 @@
             // 1. Filtra per intervallo temporale
             const filteredWorkouts = filterDataByRange(rawWorkouts, 'start_time', currentFilter);
 
-            // 2. Calcolo KPI Generali (sempre basati su dati reali)
+            // 2. Calcolo KPI Generali
             const uniqueDates = new Set(filteredWorkouts.map(w => w.start_time.split('T')[0]));
             document.getElementById('kpiTotalWorkouts').innerText = uniqueDates.size;
             document.getElementById('kpiTotalSets').innerText = filteredWorkouts.length.toLocaleString('it-IT');
@@ -172,7 +221,7 @@
             filteredWorkouts.forEach(w => { totalVol += (w.weight_kg || 0) * (w.reps || 0); });
             document.getElementById('kpiTotalVolume').innerText = Math.round(totalVol).toLocaleString('it-IT') + ' kg';
 
-            // 3. Aggregazione per Data
+            // 3. Raggruppamento per Data Sessione
             const groupsByDate = {};
             const muscleStats = {
                 'Petto': 0, 'Spalle': 0, 'Bicipiti': 0, 'Tricipiti': 0, 'Schiena': 0, 'Glutei/Gambe': 0, 'Addome': 0
@@ -209,13 +258,13 @@
 
             const sortedSessions = Object.values(groupsByDate).sort((a,b) => a.date.localeCompare(b.date));
 
-            // 4. APPLICAZIONE ZOOM SU GRAFICO VOLUME VS SERIE
+            // 4. APPLICAZIONE ZOOM
             const aggregatedData = aggregateWorkoutData(sortedSessions, currentZoom);
             const dateLabels = aggregatedData.map(d => d.label || d.date);
             const volumeValues = aggregatedData.map(d => Math.round(d.volume));
             const setsValues = aggregatedData.map(d => d.sets);
 
-            // Titolo dinamico in base allo zoom
+            // Titolo dinamico
             const zoomTitles = {
                 session: 'Evoluzione Volume (kg) vs Numero Serie (Singola Sessione)',
                 week: 'Evoluzione Volume (kg) vs Numero Serie (Somma Settimanale)',
@@ -225,7 +274,7 @@
             };
             document.getElementById('volumeChartTitle').innerText = zoomTitles[currentZoom];
 
-            // Grafico 1: Volume vs Serie con Zoom
+            // Grafico 1: Volume vs Serie
             charts.volumeVsSets = new Chart(document.getElementById('volumeVsSetsChart'), {
                 type: 'bar',
                 data: {
