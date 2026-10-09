@@ -9,12 +9,11 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/app.js"></script>
     <style>
-        /* Stili per Header Tabella Sticky (Fisso allo scorrimento) */
         .table-container {
             background: var(--card-bg);
             border: 1px solid var(--border-color);
             border-radius: 12px;
-            padding: 0; /* Rimosso padding interno per far aderire l'header ai bordi */
+            padding: 0;
             overflow-y: auto;
             max-height: 450px;
         }
@@ -27,12 +26,12 @@
         .sticky-table th {
             position: sticky;
             top: 0;
-            background-color: #0f172a; /* Sfondo scuro pieno per coprire il testo sottostante */
+            background-color: #0f172a;
             color: var(--accent-blue);
             padding: 12px 14px;
             z-index: 10;
             border-bottom: 2px solid var(--border-color);
-            box-shadow: 0 2px 5px rgba(0,0,0,0.3); /* Leggera ombra per staccare dal contenuto */
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
         }
         .sticky-table td {
             padding: 10px 14px;
@@ -71,6 +70,16 @@
             <button class="btn-filter active" onclick="setFilter('all')">Tutto</button>
         </div>
 
+        <!-- BARRA ZOOM / AGGREGAZIONE GRAFICI -->
+        <div class="filter-bar" style="border-color: var(--accent-yellow);">
+            <span class="filter-label" style="color: var(--accent-yellow);">🔍 Zoom / Aggrega Grafici:</span>
+            <button class="btn-filter btn-zoom active" onclick="setZoom('session')">Singola Sessione</button>
+            <button class="btn-filter btn-zoom" onclick="setZoom('week')">Settimanale</button>
+            <button class="btn-filter btn-zoom" onclick="setZoom('month')">Mensile</button>
+            <button class="btn-filter btn-zoom" onclick="setZoom('halfyear')">Semestrale</button>
+            <button class="btn-filter btn-zoom" onclick="setZoom('year')">Annuale</button>
+        </div>
+
         <!-- KPI Principali Allenamento -->
         <div class="kpi-grid">
             <div class="kpi-card">
@@ -93,7 +102,7 @@
         <!-- Grafici Workout -->
         <div class="charts-grid">
             <div class="chart-card">
-                <h3 style="color: var(--accent-yellow); margin-top:0;">Evoluzione Volume (kg) vs Numero Serie</h3>
+                <h3 style="color: var(--accent-yellow); margin-top:0;" id="volumeChartTitle">Evoluzione Volume (kg) vs Numero Serie</h3>
                 <canvas id="volumeVsSetsChart"></canvas>
             </div>
             <div class="chart-card">
@@ -123,11 +132,19 @@
     <script>
         let rawWorkouts = [];
         let currentFilter = 'all';
+        let currentZoom = 'session';
         let charts = {};
 
         function setFilter(range) {
             currentFilter = range;
-            document.querySelectorAll('.btn-filter').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.filter-bar:not([style*="accent-yellow"]) .btn-filter').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            renderPage();
+        }
+
+        function setZoom(zoomLevel) {
+            currentZoom = zoomLevel;
+            document.querySelectorAll('.btn-zoom').forEach(btn => btn.classList.remove('active'));
             event.target.classList.add('active');
             renderPage();
         }
@@ -143,8 +160,10 @@
 
             if (!rawWorkouts.length) return;
 
+            // 1. Filtra per intervallo temporale
             const filteredWorkouts = filterDataByRange(rawWorkouts, 'start_time', currentFilter);
 
+            // 2. Calcolo KPI Generali (sempre basati su dati reali)
             const uniqueDates = new Set(filteredWorkouts.map(w => w.start_time.split('T')[0]));
             document.getElementById('kpiTotalWorkouts').innerText = uniqueDates.size;
             document.getElementById('kpiTotalSets').innerText = filteredWorkouts.length.toLocaleString('it-IT');
@@ -153,6 +172,7 @@
             filteredWorkouts.forEach(w => { totalVol += (w.weight_kg || 0) * (w.reps || 0); });
             document.getElementById('kpiTotalVolume').innerText = Math.round(totalVol).toLocaleString('it-IT') + ' kg';
 
+            // 3. Aggregazione per Data
             const groupsByDate = {};
             const muscleStats = {
                 'Petto': 0, 'Spalle': 0, 'Bicipiti': 0, 'Tricipiti': 0, 'Schiena': 0, 'Glutei/Gambe': 0, 'Addome': 0
@@ -168,6 +188,7 @@
                 groupsByDate[date].sets += 1;
                 groupsByDate[date].reps += (w.reps || 0);
 
+                // Mappatura gruppi muscolari
                 const exerciseName = (w.exercise_title || '').toLowerCase();
                 if (exerciseName.includes('bench') || exerciseName.includes('panca') || exerciseName.includes('chest') || exerciseName.includes('fly') || exerciseName.includes('dip')) {
                     muscleStats['Petto'] += 1;
@@ -186,12 +207,25 @@
                 }
             });
 
-            const sortedDates = Object.values(groupsByDate).sort((a,b) => a.date.localeCompare(b.date));
-            const dateLabels = sortedDates.map(d => d.date);
-            const volumeValues = sortedDates.map(d => Math.round(d.volume));
-            const setsValues = sortedDates.map(d => d.sets);
+            const sortedSessions = Object.values(groupsByDate).sort((a,b) => a.date.localeCompare(b.date));
 
-            // Grafico 1: Volume vs Serie
+            // 4. APPLICAZIONE ZOOM SU GRAFICO VOLUME VS SERIE
+            const aggregatedData = aggregateWorkoutData(sortedSessions, currentZoom);
+            const dateLabels = aggregatedData.map(d => d.label || d.date);
+            const volumeValues = aggregatedData.map(d => Math.round(d.volume));
+            const setsValues = aggregatedData.map(d => d.sets);
+
+            // Titolo dinamico in base allo zoom
+            const zoomTitles = {
+                session: 'Evoluzione Volume (kg) vs Numero Serie (Singola Sessione)',
+                week: 'Evoluzione Volume (kg) vs Numero Serie (Somma Settimanale)',
+                month: 'Evoluzione Volume (kg) vs Numero Serie (Somma Mensile)',
+                halfyear: 'Evoluzione Volume (kg) vs Numero Serie (Somma Semestrale)',
+                year: 'Evoluzione Volume (kg) vs Numero Serie (Somma Annuale)'
+            };
+            document.getElementById('volumeChartTitle').innerText = zoomTitles[currentZoom];
+
+            // Grafico 1: Volume vs Serie con Zoom
             charts.volumeVsSets = new Chart(document.getElementById('volumeVsSetsChart'), {
                 type: 'bar',
                 data: {
@@ -265,7 +299,7 @@
             // Popola Tabella Registro Sessioni
             const tbody = document.getElementById('workoutTableBody');
             tbody.innerHTML = '';
-            [...sortedDates].reverse().forEach(w => {
+            [...sortedSessions].reverse().forEach(w => {
                 tbody.innerHTML += `<tr>
                     <td style="color: var(--accent-blue); font-weight: bold;">${w.date}</td>
                     <td>${w.title}</td>
