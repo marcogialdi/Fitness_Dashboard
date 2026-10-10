@@ -44,6 +44,9 @@
     </header>
 
     <div class="container">
+		<!-- BARRA STANDPOINT DINAMICA -->
+        <div id="standpointContainer"></div>
+		
         <h1 class="page-title">Gestione & Caricamento Dati</h1>
         <p class="page-subtitle">Sincronizzazione massiva e inserimento manuale report.</p>
 
@@ -177,6 +180,9 @@
             if (error) alert("❌ Errore: " + error.message);
             else { alert("✅ Report RingConn salvato!"); document.getElementById('ringconnForm').reset(); }
         }
+		document.addEventListener('DOMContentLoaded', async () => {
+			if (typeof renderStandpointBar === 'function') await renderStandpointBar();
+		});
     </script>
 </body>
 </html>
