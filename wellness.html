@@ -24,6 +24,7 @@
     </header>
 
     <div class="container">
+		<div id="standpointcontainer"></div>
         <h1 class="page-title">Salute & Recupero (RingConn)</h1>
         <p class="page-subtitle">Analisi dei report settimanali di sonno, frequenza cardiaca a riposo, passi e livelli di stress.</p>
 
@@ -51,6 +52,10 @@
     <script>
         async function loadWellnessData() {
             const { data: ringconn } = await supabaseClient.from('ringconn_weekly_reports').select('*').order('week_start', { ascending: true });
+			document.addEventListener('DOMContentLoaded', async () => {
+				if (typeof renderStandpointBar === 'function') await renderStandpointBar();
+				await loadWellnessData();
+			});
 
             if (ringconn && ringconn.length) {
                 const latest = ringconn[ringconn.length - 1];

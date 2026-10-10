@@ -24,6 +24,7 @@
     </header>
 
     <div class="container">
+		<div id="standpointcontainer"></div>
         <h1 class="page-title">Panoramica Generale</h1>
         <p class="page-subtitle">Sintesi dei principali KPI e trend di composizione corporea e recupero.</p>
 
@@ -90,6 +91,10 @@
                     <div class="kpi-card"><div class="kpi-title">Massa Grassa</div><div class="kpi-value" style="color:var(--accent-orange);">${f.val} %</div><div class="kpi-date">${f.date}</div></div>
                 `;
             }
+			document.addEventListener('DOMContentLoaded', async () => {
+				if (typeof renderStandpointBar === 'function') await renderStandpointBar();
+				await loadHomeData();
+			});
 
             // Filtraggio Dati per Grafici
             const filteredBia = filterDataByRange(rawBia, 'measurement_time', currentFilter);

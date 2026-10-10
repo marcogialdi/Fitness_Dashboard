@@ -24,6 +24,7 @@
     </header>
 
     <div class="container">
+		<div id="standpointcontainer"></div>
         <h1 class="page-title">Composizione Corporea (BIA)</h1>
         <p class="page-subtitle">Analisi dettagliata delle metriche BIA con linee di tendenza.</p>
 
@@ -96,6 +97,10 @@
 
             const filteredBia = filterDataByRange(rawBia, 'measurement_time', currentFilter);
             const labels = filteredBia.map(d => d.measurement_time ? d.measurement_time.split('T')[0] : '');
+			document.addEventListener('DOMContentLoaded', async () => {
+				if (typeof renderStandpointBar === 'function') await renderStandpointBar();
+				await loadBodyData();
+			});
 
             // Grafico Peso e LBM con Trend
             const weights = filteredBia.map(d => d.weight);
