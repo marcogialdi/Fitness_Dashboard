@@ -31,7 +31,7 @@
         <p class="page-subtitle">Sintesi dei principali KPI e trend di composizione corporea, allenamenti e benessere.</p>
 
         <!-- Barra Filtri Temporali -->
-        <div class="filter-bar">
+        <div class="filter-bar" id="homeFilterBar">
             <span class="filter-label">Filtra Periodo:</span>
             <button class="btn-filter" onclick="setFilter('1w')">1 Settimana</button>
             <button class="btn-filter" onclick="setFilter('1m')">1 Mese</button>
@@ -40,25 +40,42 @@
             <button class="btn-filter active" onclick="setFilter('all')">Tutto</button>
         </div>
 
+        <!-- Container KPI Principali -->
         <div class="kpi-grid" id="homeKpiContainer"></div>
 
         <div class="charts-grid">
-            <!-- Grafico Peso & Massa Magra -->
+            <!-- GRAFICO VOLUME WORKOUT (A LARGHEZZA INTERA E CLICCABILE) -->
+            <div class="chart-card-full" onclick="openVolumeModal()">
+                <div class="chart-card-full-header">
+                    <h3 class="chart-card-full-title">🏋️‍♂️ Volume Allenamenti per Sessione (kg) & Trendline</h3>
+                    <span class="chart-card-full-badge">🔍 Clicca per ingrandire</span>
+                </div>
+                <div class="chart-container-large">
+                    <canvas id="homeWorkoutVolumeChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Grafico Peso & Massa Magra BIA -->
             <div class="chart-card">
                 <h3 style="color: var(--accent-blue); margin-top:0;">Trend Peso & Massa Magra (BIA)</h3>
                 <canvas id="homeWeightChart"></canvas>
             </div>
 
-            <!-- NUOVO GRAFICO: Volumi per Singola Sessione di Allenamento + Trendline -->
+            <!-- Grafico Sonno & Recupero RingConn -->
             <div class="chart-card">
-                <h3 style="color: var(--accent-yellow); margin-top:0;">Volume Allenamenti per Sessione (kg) & Trend</h3>
-                <canvas id="homeWorkoutVolumeChart"></canvas>
-            </div>
-
-            <!-- Grafico Sonno & Recupero -->
-            <div class="chart-card" style="grid-column: 1 / -1;">
                 <h3 style="color: var(--accent-pink); margin-top:0;">Trend Sonno & Recupero (RingConn)</h3>
                 <canvas id="homeSleepChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL POPUP PER GRAFICO INGRANDITO -->
+    <div class="modal-overlay" id="volumeModal" onclick="closeVolumeModal(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <button class="modal-close" onclick="closeVolumeModal()">&times;</button>
+            <h3 style="color: var(--accent-yellow); margin-top:0;">🏋️‍♂️ Analisi Dettagliata Volumi per Sessione (kg)</h3>
+            <div class="modal-body">
+                <canvas id="modalVolumeChart"></canvas>
             </div>
         </div>
     </div>
@@ -70,7 +87,7 @@
 
         function setFilter(range) {
             currentFilter = range;
-            document.querySelectorAll('.filter-bar .btn-filter').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('#homeFilterBar .btn-filter').forEach(btn => btn.classList.remove('active'));
             if (event && event.target) event.target.classList.add('active');
             renderPage();
         }
@@ -94,7 +111,7 @@
         function renderPage() {
             Object.values(charts).forEach(c => c.destroy());
 
-            // 1. KPI Principali
+            // 1. KPI Principali (recupera gli ultimi valori BIA validi)
             if (rawBia.length) {
                 const w = getLastValidMetric(rawBia, 'weight');
                 const lbm = getLastValidMetric(rawBia, 'lean_body_mass');
@@ -109,13 +126,85 @@
                 `;
             }
 
-            // 2. Filtraggio Dati
+            // 2. Filtraggio Dati in base al filtro temporale selezionato
             const filteredBia = filterDataByRange(rawBia, 'measurement_time', currentFilter);
             const filteredRc = filterDataByRange(rawRingconn, 'week_start', currentFilter);
             const filteredWkt = filterDataByRange(rawWorkouts, 'start_time', currentFilter);
 
             // -------------------------------------------------------------
-            // GRAFICO 1: Peso BIA & Trend
+            // GRAFICO 1: Volume Allenamenti per Sessione (Home + Modal Popup)
+            // -------------------------------------------------------------
+            if (filteredWkt.length) {
+                const sessionsMap = {};
+                filteredWkt.forEach(w => {
+                    if (!w.start_time) return;
+                    const date = w.start_time.split('T')[0];
+                    if (!sessionsMap[date]) sessionsMap[date] = 0;
+                    sessionsMap[date] += (w.weight_kg || 0) * (w.reps || 0);
+                });
+
+                const sessionDates = Object.keys(sessionsMap).sort();
+                const sessionVolumes = sessionDates.map(d => Math.round(sessionsMap[d]));
+                const trendVolume = calculateTrendline(sessionVolumes);
+
+                const chartDataConfig = {
+                    labels: sessionDates,
+                    datasets: [
+                        {
+                            type: 'bar',
+                            label: 'Volume Sessione (kg)',
+                            data: sessionVolumes,
+                            backgroundColor: 'rgba(250, 204, 21, 0.75)',
+                            borderColor: '#facc15',
+                            borderWidth: 1,
+                            borderRadius: 4
+                        },
+                        {
+                            type: 'line',
+                            label: 'Trend Volume',
+                            data: trendVolume,
+                            borderColor: '#ffffff',
+                            borderDash: [5, 5],
+                            borderWidth: 2,
+                            pointRadius: 0,
+                            fill: false
+                        }
+                    ]
+                };
+
+                // Rendering Grafico Card Principale
+                charts.volume = new Chart(document.getElementById('homeWorkoutVolumeChart'), {
+                    type: 'bar',
+                    data: chartDataConfig,
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } },
+                            y: { ticks: { color: '#facc15' }, grid: { color: '#334155' } }
+                        }
+                    }
+                });
+
+                // Rendering Grafico nel Modal Popup Ingrandito
+                if (document.getElementById('modalVolumeChart')) {
+                    charts.modalVolume = new Chart(document.getElementById('modalVolumeChart'), {
+                        type: 'bar',
+                        data: chartDataConfig,
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            scales: {
+                                x: { ticks: { color: '#94a3b8', font: { size: 12 } }, grid: { color: '#334155' } },
+                                y: { ticks: { color: '#facc15', font: { size: 12 } }, grid: { color: '#334155' } }
+                            }
+                        }
+                    });
+                }
+            }
+
+            // -------------------------------------------------------------
+            // GRAFICO 2: Trend Peso & Massa Magra BIA
             // -------------------------------------------------------------
             if (filteredBia.length) {
                 const weights = filteredBia.map(d => d.weight);
@@ -135,59 +224,7 @@
             }
 
             // -------------------------------------------------------------
-            // GRAFICO 2: Volume Singola Sessione di Allenamento & Trendline
-            // -------------------------------------------------------------
-            if (filteredWkt.length) {
-                // Aggregazione volumi per data di sessione
-                const sessionsMap = {};
-                filteredWkt.forEach(w => {
-                    const date = w.start_time.split('T')[0];
-                    if (!sessionsMap[date]) sessionsMap[date] = 0;
-                    sessionsMap[date] += (w.weight_kg || 0) * (w.reps || 0);
-                });
-
-                const sessionDates = Object.keys(sessionsMap).sort();
-                const sessionVolumes = sessionDates.map(d => Math.round(sessionsMap[d]));
-                const trendVolume = calculateTrendline(sessionVolumes);
-
-                charts.volume = new Chart(document.getElementById('homeWorkoutVolumeChart'), {
-                    type: 'bar',
-                    data: {
-                        labels: sessionDates,
-                        datasets: [
-                            {
-                                type: 'bar',
-                                label: 'Volume Sessione (kg)',
-                                data: sessionVolumes,
-                                backgroundColor: 'rgba(250, 204, 21, 0.7)',
-                                borderColor: '#facc15',
-                                borderWidth: 1,
-                                borderRadius: 4
-                            },
-                            {
-                                type: 'line',
-                                label: 'Trend Volume',
-                                data: trendVolume,
-                                borderColor: '#ffffff',
-                                borderDash: [5, 5],
-                                borderWidth: 2,
-                                pointRadius: 0,
-                                fill: false
-                            }
-                        ]
-                    },
-                    options: {
-                        responsive: true,
-                        scales: {
-                            x: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } },
-                            y: { ticks: { color: '#facc15' }, grid: { color: '#334155' } }
-                        }
-                    }
-                });
-            }
-
-            // -------------------------------------------------------------
-            // GRAFICO 3: Sleep Score RingConn & Trend
+            // GRAFICO 3: Trend Sonno & Recupero RingConn
             // -------------------------------------------------------------
             if (filteredRc.length) {
                 const sleepScores = filteredRc.map(r => r.sleep_score);
@@ -204,6 +241,17 @@
                     },
                     options: { responsive: true }
                 });
+            }
+        }
+
+        // Funzioni di apertura/chiusura Modal Popup
+        function openVolumeModal() {
+            document.getElementById('volumeModal').classList.add('active');
+        }
+
+        function closeVolumeModal(e) {
+            if (!e || e.target.classList.contains('modal-overlay') || e.target.classList.contains('modal-close')) {
+                document.getElementById('volumeModal').classList.remove('active');
             }
         }
 
