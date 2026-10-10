@@ -24,11 +24,11 @@
     </header>
 
     <div class="container">
-		<!-- BARRA STANDPOINT DINAMICA -->
+        <!-- BARRA STANDPOINT DINAMICA -->
         <div id="standpointContainer"></div>
-		
+
         <h1 class="page-title">Panoramica Generale</h1>
-        <p class="page-subtitle">Sintesi dei principali KPI e trend di composizione corporea e recupero.</p>
+        <p class="page-subtitle">Sintesi dei principali KPI e trend di composizione corporea, allenamenti e benessere.</p>
 
         <!-- Barra Filtri Temporali -->
         <div class="filter-bar">
@@ -43,11 +43,20 @@
         <div class="kpi-grid" id="homeKpiContainer"></div>
 
         <div class="charts-grid">
+            <!-- Grafico Peso & Massa Magra -->
             <div class="chart-card">
-                <h3 style="color: var(--accent-blue); margin-top:0;">Trend Peso & Massa Muscolare</h3>
+                <h3 style="color: var(--accent-blue); margin-top:0;">Trend Peso & Massa Magra (BIA)</h3>
                 <canvas id="homeWeightChart"></canvas>
             </div>
+
+            <!-- NUOVO GRAFICO: Volumi per Singola Sessione di Allenamento + Trendline -->
             <div class="chart-card">
+                <h3 style="color: var(--accent-yellow); margin-top:0;">Volume Allenamenti per Sessione (kg) & Trend</h3>
+                <canvas id="homeWorkoutVolumeChart"></canvas>
+            </div>
+
+            <!-- Grafico Sonno & Recupero -->
+            <div class="chart-card" style="grid-column: 1 / -1;">
                 <h3 style="color: var(--accent-pink); margin-top:0;">Trend Sonno & Recupero (RingConn)</h3>
                 <canvas id="homeSleepChart"></canvas>
             </div>
@@ -55,31 +64,37 @@
     </div>
 
     <script>
-        let rawBia = [], rawRingconn = [];
+        let rawBia = [], rawRingconn = [], rawWorkouts = [];
         let currentFilter = 'all';
         let charts = {};
 
         function setFilter(range) {
             currentFilter = range;
-            document.querySelectorAll('.btn-filter').forEach(btn => btn.classList.remove('active'));
-            event.target.classList.add('active');
+            document.querySelectorAll('.filter-bar .btn-filter').forEach(btn => btn.classList.remove('active'));
+            if (event && event.target) event.target.classList.add('active');
             renderPage();
         }
 
         async function loadHomeData() {
-            const { data: bia } = await supabaseClient.from('bia_measurements').select('*').order('measurement_time', { ascending: true });
-            const { data: ringconn } = await supabaseClient.from('ringconn_weekly_reports').select('*').order('week_start', { ascending: true });
+            try {
+                const { data: bia } = await supabaseClient.from('bia_measurements').select('*').order('measurement_time', { ascending: true });
+                const { data: ringconn } = await supabaseClient.from('ringconn_weekly_reports').select('*').order('week_start', { ascending: true });
+                const { data: workouts } = await supabaseClient.from('workouts').select('*').order('start_time', { ascending: true });
 
-            rawBia = bia || [];
-            rawRingconn = ringconn || [];
+                rawBia = bia || [];
+                rawRingconn = ringconn || [];
+                rawWorkouts = workouts || [];
 
-            renderPage();
+                renderPage();
+            } catch (err) {
+                console.error("Errore nel caricamento dati Home:", err);
+            }
         }
 
         function renderPage() {
             Object.values(charts).forEach(c => c.destroy());
 
-            // KPI sempre aggiornati all'ultimo disponibile
+            // 1. KPI Principali
             if (rawBia.length) {
                 const w = getLastValidMetric(rawBia, 'weight');
                 const lbm = getLastValidMetric(rawBia, 'lean_body_mass');
@@ -93,12 +108,15 @@
                     <div class="kpi-card"><div class="kpi-title">Massa Grassa</div><div class="kpi-value" style="color:var(--accent-orange);">${f.val} %</div><div class="kpi-date">${f.date}</div></div>
                 `;
             }
-			
-            // Filtraggio Dati per Grafici
+
+            // 2. Filtraggio Dati
             const filteredBia = filterDataByRange(rawBia, 'measurement_time', currentFilter);
             const filteredRc = filterDataByRange(rawRingconn, 'week_start', currentFilter);
+            const filteredWkt = filterDataByRange(rawWorkouts, 'start_time', currentFilter);
 
-            // Grafico Peso con Linea di Trend
+            // -------------------------------------------------------------
+            // GRAFICO 1: Peso BIA & Trend
+            // -------------------------------------------------------------
             if (filteredBia.length) {
                 const weights = filteredBia.map(d => d.weight);
                 const trendWeight = calculateTrendline(weights);
@@ -111,11 +129,66 @@
                             { label: 'Peso (kg)', data: weights, borderColor: '#38bdf8', tension: 0.2 },
                             { label: 'Trend Peso', data: trendWeight, borderColor: 'rgba(56, 189, 248, 0.4)', borderDash: [5, 5], pointRadius: 0, fill: false }
                         ]
+                    },
+                    options: { responsive: true }
+                });
+            }
+
+            // -------------------------------------------------------------
+            // GRAFICO 2: Volume Singola Sessione di Allenamento & Trendline
+            // -------------------------------------------------------------
+            if (filteredWkt.length) {
+                // Aggregazione volumi per data di sessione
+                const sessionsMap = {};
+                filteredWkt.forEach(w => {
+                    const date = w.start_time.split('T')[0];
+                    if (!sessionsMap[date]) sessionsMap[date] = 0;
+                    sessionsMap[date] += (w.weight_kg || 0) * (w.reps || 0);
+                });
+
+                const sessionDates = Object.keys(sessionsMap).sort();
+                const sessionVolumes = sessionDates.map(d => Math.round(sessionsMap[d]));
+                const trendVolume = calculateTrendline(sessionVolumes);
+
+                charts.volume = new Chart(document.getElementById('homeWorkoutVolumeChart'), {
+                    type: 'bar',
+                    data: {
+                        labels: sessionDates,
+                        datasets: [
+                            {
+                                type: 'bar',
+                                label: 'Volume Sessione (kg)',
+                                data: sessionVolumes,
+                                backgroundColor: 'rgba(250, 204, 21, 0.7)',
+                                borderColor: '#facc15',
+                                borderWidth: 1,
+                                borderRadius: 4
+                            },
+                            {
+                                type: 'line',
+                                label: 'Trend Volume',
+                                data: trendVolume,
+                                borderColor: '#ffffff',
+                                borderDash: [5, 5],
+                                borderWidth: 2,
+                                pointRadius: 0,
+                                fill: false
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            x: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } },
+                            y: { ticks: { color: '#facc15' }, grid: { color: '#334155' } }
+                        }
                     }
                 });
             }
 
-            // Grafico Sleep Score con Trend
+            // -------------------------------------------------------------
+            // GRAFICO 3: Sleep Score RingConn & Trend
+            // -------------------------------------------------------------
             if (filteredRc.length) {
                 const sleepScores = filteredRc.map(r => r.sleep_score);
                 const trendSleep = calculateTrendline(sleepScores);
@@ -123,20 +196,21 @@
                 charts.sleep = new Chart(document.getElementById('homeSleepChart'), {
                     type: 'line',
                     data: {
-                        labels: filteredRc.map(r => r.label),
+                        labels: filteredRc.map(r => r.label || r.week_start),
                         datasets: [
                             { label: 'Sleep Score', data: sleepScores, borderColor: '#ec4899', tension: 0.2 },
                             { label: 'Trend Sonno', data: trendSleep, borderColor: 'rgba(236, 72, 153, 0.4)', borderDash: [5, 5], pointRadius: 0, fill: false }
                         ]
-                    }
+                    },
+                    options: { responsive: true }
                 });
             }
         }
-		document.addEventListener('DOMContentLoaded', async () => {
-			if (typeof renderStandpointBar === 'function') await renderStandpointBar();
-			await loadHomeData();
-		});
-        document.addEventListener('DOMContentLoaded', loadHomeData);
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            if (typeof renderStandpointBar === 'function') await renderStandpointBar();
+            await loadHomeData();
+        });
     </script>
 </body>
 </html>

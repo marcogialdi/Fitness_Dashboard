@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Body - Composizione Corporea</title>
+    <title>Body - Analisi Composizione Corporea</title>
     <link rel="stylesheet" href="css/style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -24,11 +24,11 @@
     </header>
 
     <div class="container">
-		<!-- BARRA STANDPOINT DINAMICA -->
+        <!-- BARRA STANDPOINT DINAMICA -->
         <div id="standpointContainer"></div>
-		
-        <h1 class="page-title">Composizione Corporea (BIA)</h1>
-        <p class="page-subtitle">Analisi dettagliata delle metriche BIA con linee di tendenza.</p>
+
+        <h1 class="page-title">Composizione Corporea & Analisi BIA</h1>
+        <p class="page-subtitle">Monitoraggio dettagliato dei parametri antropometrici, idratazione e distribuzione muscolare/grassa.</p>
 
         <!-- Barra Filtri Temporali -->
         <div class="filter-bar">
@@ -40,24 +40,50 @@
             <button class="btn-filter active" onclick="setFilter('all')">Tutto</button>
         </div>
 
+        <!-- KPI Principali Body -->
         <div class="kpi-grid" id="bodyKpiContainer"></div>
 
+        <!-- SEZIONE 1: COMPOSIZIONE CORPOREA GENERALE -->
+        <div class="section-title" style="color: var(--accent-blue); font-size: 1.3rem; font-weight: bold; margin: 25px 0 15px 0; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
+            📊 1. Composizione Corporea Generale
+        </div>
+        
         <div class="charts-grid">
+            <!-- Grafico Peso, Massa Magra e Muscolo -->
             <div class="chart-card">
-                <h3 style="color: var(--accent-blue); margin-top:0;">Evoluzione Peso & Massa Magra (kg)</h3>
-                <canvas id="weightLbmChart"></canvas>
+                <h3 style="color: var(--accent-blue); margin-top:0;">Evoluzione Peso, LBM & Massa Muscolare (kg)</h3>
+                <canvas id="chartWeightLbm"></canvas>
             </div>
+
+            <!-- Grafico Grasso % vs Acqua Corporea % -->
             <div class="chart-card">
-                <h3 style="color: var(--accent-orange); margin-top:0;">Percentuale Massa Grassa (%)</h3>
-                <canvas id="fatPercentageChart"></canvas>
+                <h3 style="color: var(--accent-yellow); margin-top:0;">Massa Grassa (%) vs Idratazione Acqua (%)</h3>
+                <canvas id="chartFatWater"></canvas>
             </div>
+        </div>
+
+        <!-- SEZIONE 2: ANALISI CLINICA & SEGMENTALE -->
+        <div class="section-title" style="color: var(--accent-teal); font-size: 1.3rem; font-weight: bold; margin: 35px 0 15px 0; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
+            🩺 2. Analisi Clinica & Segmentale
+        </div>
+
+        <div class="charts-grid">
+            <!-- Grafico 1: Analisi Segmentale Muscolare (Ultima Rilevazione) -->
             <div class="chart-card">
-                <h3 style="color: var(--accent-green); margin-top:0;">Massa Muscolare (kg)</h3>
-                <canvas id="muscleMassChart"></canvas>
+                <h3 style="color: var(--accent-teal); margin-top:0;">Distribuzione Muscolare Segmentale (kg)</h3>
+                <canvas id="chartMuscleSegmental"></canvas>
             </div>
+
+            <!-- Grafico 2: Grasso Viscerale vs Sottocutaneo % -->
             <div class="chart-card">
-                <h3 style="color: var(--accent-teal); margin-top:0;">Acqua Corporea (%)</h3>
-                <canvas id="waterChart"></canvas>
+                <h3 style="color: var(--accent-orange); margin-top:0;">Grasso Viscerale (Livello) vs Sottocutaneo (%)</h3>
+                <canvas id="chartVisceralSubcut"></canvas>
+            </div>
+
+            <!-- Grafico 3: Proteine % & Massa Ossea (kg) -->
+            <div class="chart-card" style="grid-column: 1 / -1;">
+                <h3 style="color: var(--accent-green); margin-top:0;">Proteine Corporee (%) & Massa Ossea (kg)</h3>
+                <canvas id="chartProteinBone"></canvas>
             </div>
         </div>
     </div>
@@ -69,91 +95,187 @@
 
         function setFilter(range) {
             currentFilter = range;
-            document.querySelectorAll('.btn-filter').forEach(btn => btn.classList.remove('active'));
-            event.target.classList.add('active');
+            document.querySelectorAll('.filter-bar .btn-filter').forEach(btn => btn.classList.remove('active'));
+            if (event && event.target) event.target.classList.add('active');
             renderPage();
         }
 
         async function loadBodyData() {
-            const { data: bia } = await supabaseClient.from('bia_measurements').select('*').order('measurement_time', { ascending: true });
-            rawBia = bia || [];
-            renderPage();
+            try {
+                const { data: bia } = await supabaseClient
+                    .from('bia_measurements')
+                    .select('*')
+                    .order('measurement_time', { ascending: true });
+
+                rawBia = bia || [];
+                renderPage();
+            } catch (err) {
+                console.error("Errore nel caricamento dati BIA:", err);
+            }
+        }
+
+        // Funzione helper per pulire i valori numerici dalle stringhe BIA (es. "61.3(44.8-55.9)kg" -> 61.3)
+        function parseBiaValue(val) {
+            if (val === null || val === undefined) return null;
+            if (typeof val === 'number') return val;
+            const str = String(val).trim();
+            if (str === '' || str === '--') return null;
+            const match = str.match(/([0-9]+(\.[0-9]+)?)/);
+            return match ? parseFloat(match[1]) : null;
         }
 
         function renderPage() {
             Object.values(charts).forEach(c => c.destroy());
 
-            if (rawBia.length) {
-                const w = getLastValidMetric(rawBia, 'weight');
-                const lbm = getLastValidMetric(rawBia, 'lean_body_mass');
-                const m = getLastValidMetric(rawBia, 'muscle_mass');
-                const f = getLastValidMetric(rawBia, 'body_fat_percentage');
+            if (!rawBia.length) return;
 
-                document.getElementById('bodyKpiContainer').innerHTML = `
-                    <div class="kpi-card"><div class="kpi-title">Peso Attuale</div><div class="kpi-value" style="color:var(--accent-blue);">${w.val} kg</div><div class="kpi-date">${w.date}</div></div>
-                    <div class="kpi-card"><div class="kpi-title">Massa Magra (LBM)</div><div class="kpi-value" style="color:var(--accent-teal);">${lbm.val} kg</div><div class="kpi-date">${lbm.date}</div></div>
-                    <div class="kpi-card"><div class="kpi-title">Massa Muscolare</div><div class="kpi-value" style="color:var(--accent-green);">${m.val} kg</div><div class="kpi-date">${m.date}</div></div>
-                    <div class="kpi-card"><div class="kpi-title">Massa Grassa</div><div class="kpi-value" style="color:var(--accent-orange);">${f.val} %</div><div class="kpi-date">${f.date}</div></div>
-                `;
-            }
+            // 1. KPI Principali
+            const w = getLastValidMetric(rawBia, 'weight');
+            const lbm = getLastValidMetric(rawBia, 'lean_body_mass');
+            const m = getLastValidMetric(rawBia, 'muscle_mass');
+            const f = getLastValidMetric(rawBia, 'body_fat_percentage');
 
+            document.getElementById('bodyKpiContainer').innerHTML = `
+                <div class="kpi-card"><div class="kpi-title">Peso Corporeo</div><div class="kpi-value" style="color:var(--accent-blue);">${w.val} kg</div><div class="kpi-date">${w.date}</div></div>
+                <div class="kpi-card"><div class="kpi-title">Massa Magra (LBM)</div><div class="kpi-value" style="color:var(--accent-teal);">${lbm.val} kg</div><div class="kpi-date">${lbm.date}</div></div>
+                <div class="kpi-card"><div class="kpi-title">Massa Muscolare</div><div class="kpi-value" style="color:var(--accent-green);">${m.val} kg</div><div class="kpi-date">${m.date}</div></div>
+                <div class="kpi-card"><div class="kpi-title">Massa Grassa %</div><div class="kpi-value" style="color:var(--accent-orange);">${f.val} %</div><div class="kpi-date">${f.date}</div></div>
+            `;
+
+            // 2. Filtra i dati per intervallo di tempo
             const filteredBia = filterDataByRange(rawBia, 'measurement_time', currentFilter);
             const labels = filteredBia.map(d => d.measurement_time ? d.measurement_time.split('T')[0] : '');
-			
-            // Grafico Peso e LBM con Trend
-            const weights = filteredBia.map(d => d.weight);
-            charts.weightLbm = new Chart(document.getElementById('weightLbmChart'), {
+
+            // =========================================================
+            // SEZIONE 1: COMPOSIZIONE CORPOREA GENERALE
+            // =========================================================
+
+            // Grafico 1: Peso, Massa Magra, Massa Muscolare
+            const weights = filteredBia.map(d => parseBiaValue(d.weight));
+            const lbmValues = filteredBia.map(d => parseBiaValue(d.lean_body_mass));
+            const muscleValues = filteredBia.map(d => parseBiaValue(d.muscle_mass));
+
+            charts.weightLbm = new Chart(document.getElementById('chartWeightLbm'), {
                 type: 'line',
                 data: {
                     labels: labels,
                     datasets: [
-                        { label: 'Peso (kg)', data: weights, borderColor: '#38bdf8', tension: 0.2 },
-                        { label: 'Trend Peso', data: calculateTrendline(weights), borderColor: 'rgba(56, 189, 248, 0.4)', borderDash: [5, 5], pointRadius: 0 }
+                        { label: 'Peso (kg)', data: weights, borderColor: '#38bdf8', backgroundColor: '#38bdf8', tension: 0.2 },
+                        { label: 'Massa Magra (kg)', data: lbmValues, borderColor: '#2dd4bf', backgroundColor: '#2dd4bf', tension: 0.2 },
+                        { label: 'Massa Muscolare (kg)', data: muscleValues, borderColor: '#4ade80', backgroundColor: '#4ade80', tension: 0.2 }
                     ]
-                }
+                },
+                options: { responsive: true, spanGaps: true }
             });
 
-            // Grafico Massa Grassa % con Trend
-            const fatVals = filteredBia.map(d => d.body_fat_percentage);
-            charts.fat = new Chart(document.getElementById('fatPercentageChart'), {
+            // Grafico 2: Massa Grassa % vs Acqua Corporea %
+            const fatPercents = filteredBia.map(d => parseBiaValue(d.body_fat_percentage));
+            const waterPercents = filteredBia.map(d => parseBiaValue(d.body_water));
+
+            charts.fatWater = new Chart(document.getElementById('chartFatWater'), {
                 type: 'line',
                 data: {
                     labels: labels,
                     datasets: [
-                        { label: 'Massa Grassa (%)', data: fatVals, borderColor: '#fb923c', tension: 0.2 },
-                        { label: 'Trend Grasso', data: calculateTrendline(fatVals), borderColor: 'rgba(251, 146, 60, 0.4)', borderDash: [5, 5], pointRadius: 0 }
+                        { label: 'Grasso (%)', data: fatPercents, borderColor: '#fb923c', yAxisID: 'yFat', tension: 0.2 },
+                        { label: 'Acqua (%)', data: waterPercents, borderColor: '#38bdf8', yAxisID: 'yWater', tension: 0.2 }
                     ]
+                },
+                options: {
+                    responsive: true,
+                    spanGaps: true,
+                    scales: {
+                        yFat: { type: 'linear', position: 'left', title: { display: true, text: 'Grasso %', color: '#fb923c' } },
+                        yWater: { type: 'linear', position: 'right', title: { display: true, text: 'Acqua %', color: '#38bdf8' }, grid: { drawOnChartArea: false } }
+                    }
                 }
             });
 
-            // Grafico Massa Muscolare con Trend
-            const muscleVals = filteredBia.map(d => d.muscle_mass);
-            charts.muscle = new Chart(document.getElementById('muscleMassChart'), {
+            // =========================================================
+            // SEZIONE 2: ANALISI CLINICA & SEGMENTALE
+            // =========================================================
+
+            // Grafico 3: Analisi Segmentale Muscolare (recupera l'ultima rilevazione valida)
+            const lastFullBia = [...filteredBia].reverse().find(d => d['Left Arm-Muscle Balance'] || d.left_arm_muscle);
+            
+            let armL = 0, armR = 0, trunk = 0, legL = 0, legR = 0;
+            if (lastFullBia) {
+                armL = parseBiaValue(lastFullBia['Left Arm-Muscle Balance'] || lastFullBia.left_arm_muscle) || 0;
+                armR = parseBiaValue(lastFullBia['Right Arm-Muscle Balance'] || lastFullBia.right_arm_muscle) || 0;
+                trunk = parseBiaValue(lastFullBia['Trunk-Muscle Balance'] || lastFullBia.trunk_muscle) || 0;
+                legL = parseBiaValue(lastFullBia['Left Leg-Muscle Balance'] || lastFullBia.left_leg_muscle) || 0;
+                legR = parseBiaValue(lastFullBia['Right Leg-Muscle Balance'] || lastFullBia.right_leg_muscle) || 0;
+            }
+
+            charts.muscleSegmental = new Chart(document.getElementById('chartMuscleSegmental'), {
+                type: 'bar',
+                data: {
+                    labels: ['Braccio Sx', 'Braccio Dx', 'Tronco', 'Gamba Sx', 'Gamba Dx'],
+                    datasets: [{
+                        label: 'Massa Muscolare (kg)',
+                        data: [armL, armR, trunk, legL, legR],
+                        backgroundColor: ['#38bdf8', '#38bdf8', '#2dd4bf', '#4ade80', '#4ade80'],
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    indexAxis: 'y', // Grafico a barre orizzontali per facilitare la lettura
+                    plugins: { legend: { display: false } }
+                }
+            });
+
+            // Grafico 4: Grasso Viscerale (livello) vs Subcutaneo (%)
+            const visceralFat = filteredBia.map(d => parseBiaValue(d.visceral_fat || d['Visceral Fat']));
+            const subcutFat = filteredBia.map(d => parseBiaValue(d.subcutaneous_fat || d['Subcutaneous Fat']));
+
+            charts.visceralSubcut = new Chart(document.getElementById('chartVisceralSubcut'), {
                 type: 'line',
                 data: {
                     labels: labels,
                     datasets: [
-                        { label: 'Massa Muscolare (kg)', data: muscleVals, borderColor: '#4ade80', tension: 0.2 },
-                        { label: 'Trend Muscolo', data: calculateTrendline(muscleVals), borderColor: 'rgba(74, 222, 128, 0.4)', borderDash: [5, 5], pointRadius: 0 }
+                        { label: 'Grasso Viscerale (Livello)', data: visceralFat, borderColor: '#ef4444', yAxisID: 'yVisceral', tension: 0.1 },
+                        { label: 'Grasso Sottocutaneo (%)', data: subcutFat, borderColor: '#f59e0b', yAxisID: 'ySubcut', tension: 0.1 }
                     ]
+                },
+                options: {
+                    responsive: true,
+                    spanGaps: true,
+                    scales: {
+                        yVisceral: { type: 'linear', position: 'left', title: { display: true, text: 'Livello Viscerale', color: '#ef4444' } },
+                        ySubcut: { type: 'linear', position: 'right', title: { display: true, text: 'Sottocutaneo %', color: '#f59e0b' }, grid: { drawOnChartArea: false } }
+                    }
                 }
             });
 
-            // Grafico Acqua Corporea %
-            const waterVals = filteredBia.map(d => d.body_water);
-            charts.water = new Chart(document.getElementById('waterChart'), {
+            // Grafico 5: Proteine (%) & Massa Ossea (kg)
+            const proteinPercents = filteredBia.map(d => parseBiaValue(d.protein || d['Protein']));
+            const boneMass = filteredBia.map(d => parseBiaValue(d.bone_mass || d['Bone Mass']));
+
+            charts.proteinBone = new Chart(document.getElementById('chartProteinBone'), {
                 type: 'line',
                 data: {
                     labels: labels,
-                    datasets: [{ label: 'Acqua (%)', data: waterVals, borderColor: '#2dd4bf', tension: 0.2 }]
+                    datasets: [
+                        { label: 'Proteine (%)', data: proteinPercents, borderColor: '#10b981', yAxisID: 'yProtein', tension: 0.2 },
+                        { label: 'Massa Ossea (kg)', data: boneMass, borderColor: '#a855f7', yAxisID: 'yBone', tension: 0.2 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    spanGaps: true,
+                    scales: {
+                        yProtein: { type: 'linear', position: 'left', title: { display: true, text: 'Proteine %', color: '#10b981' } },
+                        yBone: { type: 'linear', position: 'right', title: { display: true, text: 'Massa Ossea (kg)', color: '#a855f7' }, grid: { drawOnChartArea: false } }
+                    }
                 }
             });
         }
-		document.addEventListener('DOMContentLoaded', async () => {
-			if (typeof renderStandpointBar === 'function') await renderStandpointBar();
-			await loadBodyData();
-		});
-        document.addEventListener('DOMContentLoaded', loadBodyData);
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            if (typeof renderStandpointBar === 'function') await renderStandpointBar();
+            await loadBodyData();
+        });
     </script>
 </body>
 </html>

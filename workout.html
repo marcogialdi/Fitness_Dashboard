@@ -58,7 +58,7 @@
         <div id="standpointContainer"></div>
 
         <h1 class="page-title">Allenamenti & Progressione Carichi</h1>
-        <p class="page-subtitle">Analisi dei volumi sollevati, numero di serie ed efficienza del sovraccarico progressivo.</p>
+        <p class="page-subtitle">Analisi dei volumi sollevati, intensità, densità di lavoro e stima 1RM sui fondamentali.</p>
 
         <!-- Barra Filtri Temporali -->
         <div class="filter-bar" id="periodFilterBar">
@@ -72,7 +72,7 @@
 
         <!-- BARRA ZOOM / AGGREGAZIONE GRAFICI -->
         <div class="filter-bar" style="border-color: var(--accent-yellow);">
-            <span class="filter-label" style="color: var(--accent-yellow);">🔍 Zoom / Aggrega Grafici:</span>
+            <span class="filter-label" style="color: var(--accent-yellow);">🔍 Zoom / Aggrega Volumi:</span>
             <button class="btn-filter btn-zoom active" onclick="setZoom('session')">Singola Sessione</button>
             <button class="btn-filter btn-zoom" onclick="setZoom('week')">Settimanale</button>
             <button class="btn-filter btn-zoom" onclick="setZoom('month')">Mensile</button>
@@ -81,25 +81,35 @@
         </div>
 
         <!-- KPI Principali Allenamento -->
-        <div class="kpi-grid">
+        <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
             <div class="kpi-card">
-                <div class="kpi-title">Allenamenti Eseguiti</div>
+                <div class="kpi-title">Allenamenti</div>
                 <div class="kpi-value" id="kpiTotalWorkouts" style="color:var(--accent-blue);">--</div>
                 <div class="kpi-date">Sessioni completate</div>
             </div>
             <div class="kpi-card">
-                <div class="kpi-title">Volume Totale Sollevato</div>
+                <div class="kpi-title">Volume Totale</div>
                 <div class="kpi-value" id="kpiTotalVolume" style="color:var(--accent-yellow);">-- kg</div>
                 <div class="kpi-date">Kg complessivi</div>
             </div>
             <div class="kpi-card">
-                <div class="kpi-title">Serie Totali Eseguite</div>
+                <div class="kpi-title">Serie Totali</div>
                 <div class="kpi-value" id="kpiTotalSets" style="color:var(--accent-green);">--</div>
                 <div class="kpi-date">Set completati</div>
             </div>
+            <div class="kpi-card">
+                <div class="kpi-title">Densità Media</div>
+                <div class="kpi-value" id="kpiDensity" style="color:var(--accent-teal);">-- kg/min</div>
+                <div class="kpi-date">Efficienza temporale</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-title">Carico Medio/Rep</div>
+                <div class="kpi-value" id="kpiAvgWeight" style="color:var(--accent-pink);">-- kg</div>
+                <div class="kpi-date">Intensità media</div>
+            </div>
         </div>
 
-        <!-- Grafici Workout -->
+        <!-- SEZIONE 1: VOLUMI E GRUPPI MUSCOLARI -->
         <div class="charts-grid">
             <div class="chart-card">
                 <h3 style="color: var(--accent-yellow); margin-top:0;" id="volumeChartTitle">Evoluzione Volume (kg) vs Numero Serie</h3>
@@ -111,8 +121,33 @@
             </div>
         </div>
 
+        <!-- SEZIONE 2: 1RM STIMATO & DENSITA' DI LAVORO -->
+        <div class="section-title" style="color: var(--accent-blue); font-size: 1.2rem; font-weight: bold; margin: 30px 0 10px 0;">
+            📈 Progressione Forza (1RM Stimato) & Densità
+        </div>
+
+        <div class="charts-grid">
+            <!-- Grafico 1RM Stimato sui Fondamentali -->
+            <div class="chart-card">
+                <h3 style="color: var(--accent-blue); margin-top:0;">Stima 1RM Massimale (Formula Epley)</h3>
+                <canvas id="chart1RM"></canvas>
+            </div>
+
+            <!-- Grafico Densità di Allenamento (kg/min) -->
+            <div class="chart-card">
+                <h3 style="color: var(--accent-teal); margin-top:0;">Densità di Lavoro per Sessione (kg/minuto)</h3>
+                <canvas id="chartDensity"></canvas>
+            </div>
+
+            <!-- Grafico Target Reps (Forza vs Ipertrofia vs Resistenza) -->
+            <div class="chart-card" style="grid-column: 1 / -1;">
+                <h3 style="color: var(--accent-green); margin-top:0;">Distribuzione Volume per Range di Ripetizioni</h3>
+                <canvas id="chartRepsRange"></canvas>
+            </div>
+        </div>
+
         <!-- Registro Storico Sessioni con Header Sticky -->
-        <div class="section-title" style="color: var(--accent-teal); font-size: 1.2rem; font-weight: bold; margin-bottom: 10px;">🏋️‍♂️ Registro Sessioni Aggregate</div>
+        <div class="section-title" style="color: var(--accent-teal); font-size: 1.2rem; font-weight: bold; margin: 30px 0 10px 0;">🏋️‍♂️ Registro Sessioni Aggregate</div>
         <div class="table-container">
             <table class="sticky-table">
                 <thead>
@@ -122,6 +157,7 @@
                         <th>Volume Totale</th>
                         <th>Serie Totalizzate</th>
                         <th>Ripetizioni</th>
+                        <th>Durata</th>
                     </tr>
                 </thead>
                 <tbody id="workoutTableBody"></tbody>
@@ -135,32 +171,35 @@
         let currentZoom = 'session';
         let charts = {};
 
-        // -------------------------------------------------------------
-        // LOGICA DI AGGREGAZIONE TEMPORALE (Zoom)
-        // -------------------------------------------------------------
         function aggregateWorkoutData(dataArray, groupBy) {
             if (!dataArray || !dataArray.length || groupBy === 'session') return dataArray;
 
             const groups = {};
 
             dataArray.forEach(item => {
-                const d = new Date(item.date);
-                if (isNaN(d.getTime())) return;
+                if (!item.date) return;
+                const parts = item.date.split('-');
+                if (parts.length < 3) return;
+                
+                const year = parseInt(parts[0], 10);
+                const month = parseInt(parts[1], 10) - 1;
+                const day = parseInt(parts[2], 10);
 
                 let key = '';
                 if (groupBy === 'week') {
-                    const day = d.getDay() || 7;
+                    const d = new Date(year, month, day);
+                    const dayOfWeek = d.getDay() || 7;
                     const monday = new Date(d);
-                    monday.setDate(d.getDate() - day + 1);
+                    monday.setDate(d.getDate() - dayOfWeek + 1);
                     key = `Sett. ${monday.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' })}`;
                 } else if (groupBy === 'month') {
+                    const d = new Date(year, month, day);
                     key = d.toLocaleDateString('it-IT', { month: 'short', year: '2-digit' });
                 } else if (groupBy === 'halfyear') {
-                    // Mesi JS: 0..5 (Jan-Jun) = S1, 6..11 (Jul-Dec) = S2
-                    const semester = d.getMonth() < 6 ? 'S1' : 'S2';
-                    key = `${semester} ${d.getFullYear()}`;
+                    const semester = month < 6 ? 'S1' : 'S2';
+                    key = `${semester} ${year}`;
                 } else if (groupBy === 'year') {
-                    key = `${d.getFullYear()}`;
+                    key = `${year}`;
                 }
 
                 if (!groups[key]) {
@@ -178,14 +217,12 @@
         function setFilter(range) {
             currentFilter = range;
             document.querySelectorAll('#periodFilterBar .btn-filter').forEach(btn => btn.classList.remove('active'));
-            event.target.classList.add('active');
+            if (event && event.target) event.target.classList.add('active');
             renderPage();
         }
 
         function setZoom(zoomLevel) {
             currentZoom = zoomLevel;
-
-            // Se attiviamo lo zoom Semestrale o Annuale, forziamo il periodo su "Tutto"
             if (zoomLevel === 'halfyear' || zoomLevel === 'year') {
                 currentFilter = 'all';
                 document.querySelectorAll('#periodFilterBar .btn-filter').forEach(btn => btn.classList.remove('active'));
@@ -194,14 +231,18 @@
             }
 
             document.querySelectorAll('.btn-zoom').forEach(btn => btn.classList.remove('active'));
-            event.target.classList.add('active');
+            if (event && event.target) event.target.classList.add('active');
             renderPage();
         }
 
         async function loadWorkoutData() {
-            const { data: workouts } = await supabaseClient.from('workouts').select('*');
-            rawWorkouts = workouts || [];
-            renderPage();
+            try {
+                const { data: workouts } = await supabaseClient.from('workouts').select('*').order('start_time', { ascending: true });
+                rawWorkouts = workouts || [];
+                renderPage();
+            } catch (err) {
+                console.error("Errore caricamento workouts:", err);
+            }
         }
 
         function renderPage() {
@@ -209,160 +250,73 @@
 
             if (!rawWorkouts.length) return;
 
-            // 1. Filtra per intervallo temporale
             const filteredWorkouts = filterDataByRange(rawWorkouts, 'start_time', currentFilter);
 
-            // 2. Calcolo KPI Generali
+            // 1. Calcolo KPI Generali
             const uniqueDates = new Set(filteredWorkouts.map(w => w.start_time.split('T')[0]));
             document.getElementById('kpiTotalWorkouts').innerText = uniqueDates.size;
             document.getElementById('kpiTotalSets').innerText = filteredWorkouts.length.toLocaleString('it-IT');
 
-            let totalVol = 0;
-            filteredWorkouts.forEach(w => { totalVol += (w.weight_kg || 0) * (w.reps || 0); });
-            document.getElementById('kpiTotalVolume').innerText = Math.round(totalVol).toLocaleString('it-IT') + ' kg';
+            let totalVol = 0, totalReps = 0, totalDurationMin = 0;
+            const durationByDate = {};
 
-            // 3. Raggruppamento per Data Sessione
+            filteredWorkouts.forEach(w => {
+                const vol = (w.weight_kg || 0) * (w.reps || 0);
+                totalVol += vol;
+                totalReps += (w.reps || 0);
+                
+                const date = w.start_time.split('T')[0];
+                if (w.duration_min && !durationByDate[date]) {
+                    durationByDate[date] = w.duration_min;
+                    totalDurationMin += w.duration_min;
+                }
+            });
+
+            document.getElementById('kpiTotalVolume').innerText = Math.round(totalVol).toLocaleString('it-IT') + ' kg';
+            document.getElementById('kpiAvgWeight').innerText = totalReps > 0 ? (totalVol / totalReps).toFixed(1) + ' kg' : '--';
+            document.getElementById('kpiDensity').innerText = totalDurationMin > 0 ? (totalVol / totalDurationMin).toFixed(0) + ' kg/min' : '--';
+
+            // 2. Aggregazione per Data
             const groupsByDate = {};
-            const muscleStats = {
-                'Petto': 0, 'Spalle': 0, 'Bicipiti': 0, 'Tricipiti': 0, 'Schiena': 0, 'Glutei/Gambe': 0, 'Addome': 0
-            };
+            const muscleStats = { 'Petto': 0, 'Spalle': 0, 'Bicipiti': 0, 'Tricipiti': 0, 'Schiena': 0, 'Glutei/Gambe': 0, 'Addome': 0 };
+            
+            // Per grafico 1RM sui fondamentali
+            const rmData = { 'Panca Piana': {}, 'Squat': {}, 'Schiena (Lat/Row)': {}, 'Spalle (Press)': {} };
+            
+            // Per range di ripetizioni
+            let repsLow = 0, repsMid = 0, repsHigh = 0;
 
             filteredWorkouts.forEach(w => {
                 const date = w.start_time.split('T')[0];
                 if (!groupsByDate[date]) {
-                    groupsByDate[date] = { date, title: w.title || 'Allenamento', volume: 0, sets: 0, reps: 0 };
+                    groupsByDate[date] = { date, title: w.title || 'Allenamento', volume: 0, sets: 0, reps: 0, duration: w.duration_min || 0 };
                 }
 
-                groupsByDate[date].volume += (w.weight_kg || 0) * (w.reps || 0);
+                const vol = (w.weight_kg || 0) * (w.reps || 0);
+                groupsByDate[date].volume += vol;
                 groupsByDate[date].sets += 1;
                 groupsByDate[date].reps += (w.reps || 0);
 
-                // Mappatura gruppi muscolari
-                const exerciseName = (w.exercise_title || '').toLowerCase();
-                if (exerciseName.includes('bench') || exerciseName.includes('panca') || exerciseName.includes('chest') || exerciseName.includes('fly') || exerciseName.includes('dip')) {
+                // Range Reps
+                const reps = w.reps || 0;
+                if (reps >= 1 && reps <= 6) repsLow += vol;
+                else if (reps >= 7 && reps <= 12) repsMid += vol;
+                else if (reps > 12) repsHigh += vol;
+
+                // Mappatura Gruppi Muscolari
+                const ex = (w.exercise_title || '').toLowerCase();
+                const weight = w.weight_kg || 0;
+                const estimated1RM = weight > 0 && reps > 0 ? weight * (1 + reps / 30) : 0;
+
+                if (ex.includes('bench') || ex.includes('panca') || ex.includes('chest') || ex.includes('fly') || ex.includes('dip')) {
                     muscleStats['Petto'] += 1;
-                } else if (exerciseName.includes('shoulder') || exerciseName.includes('overhead') || exerciseName.includes('lateral') || exerciseName.includes('spall') || exerciseName.includes('alzate')) {
+                    if (ex.includes('panca') || ex.includes('bench')) {
+                        rmData['Panca Piana'][date] = Math.max(rmData['Panca Piana'][date] || 0, estimated1RM);
+                    }
+                } else if (ex.includes('shoulder') || ex.includes('overhead') || ex.includes('lateral') || ex.includes('spall') || ex.includes('alzate')) {
                     muscleStats['Spalle'] += 1;
-                } else if (exerciseName.includes('bicep') || exerciseName.includes('curl') || exerciseName.includes('bicipit')) {
-                    muscleStats['Bicipiti'] += 1;
-                } else if (exerciseName.includes('tricep') || exerciseName.includes('pushdown') || exerciseName.includes('skull') || exerciseName.includes('tricipit')) {
-                    muscleStats['Tricipiti'] += 1;
-                } else if (exerciseName.includes('lat') || exerciseName.includes('row') || exerciseName.includes('pull') || exerciseName.includes('rematore') || exerciseName.includes('schiena')) {
-                    muscleStats['Schiena'] += 1;
-                } else if (exerciseName.includes('squat') || exerciseName.includes('leg') || exerciseName.includes('press') || exerciseName.includes('lunge') || exerciseName.includes('hip thrust') || exerciseName.includes('gamb')) {
-                    muscleStats['Glutei/Gambe'] += 1;
-                } else if (exerciseName.includes('crunch') || exerciseName.includes('plank') || exerciseName.includes('addom') || exerciseName.includes('abs')) {
-                    muscleStats['Addome'] += 1;
-                }
-            });
-
-            const sortedSessions = Object.values(groupsByDate).sort((a,b) => a.date.localeCompare(b.date));
-
-            // 4. APPLICAZIONE ZOOM
-            const aggregatedData = aggregateWorkoutData(sortedSessions, currentZoom);
-            const dateLabels = aggregatedData.map(d => d.label || d.date);
-            const volumeValues = aggregatedData.map(d => Math.round(d.volume));
-            const setsValues = aggregatedData.map(d => d.sets);
-
-            // Titolo dinamico
-            const zoomTitles = {
-                session: 'Evoluzione Volume (kg) vs Numero Serie (Singola Sessione)',
-                week: 'Evoluzione Volume (kg) vs Numero Serie (Somma Settimanale)',
-                month: 'Evoluzione Volume (kg) vs Numero Serie (Somma Mensile)',
-                halfyear: 'Evoluzione Volume (kg) vs Numero Serie (Somma Semestrale)',
-                year: 'Evoluzione Volume (kg) vs Numero Serie (Somma Annuale)'
-            };
-            document.getElementById('volumeChartTitle').innerText = zoomTitles[currentZoom];
-
-            // Grafico 1: Volume vs Serie
-            charts.volumeVsSets = new Chart(document.getElementById('volumeVsSetsChart'), {
-                type: 'bar',
-                data: {
-                    labels: dateLabels,
-                    datasets: [
-                        {
-                            type: 'bar',
-                            label: 'Volume Totale (kg)',
-                            data: volumeValues,
-                            backgroundColor: 'rgba(250, 204, 21, 0.7)',
-                            borderColor: '#facc15',
-                            borderWidth: 1,
-                            yAxisID: 'yVolume',
-                            borderRadius: 4
-                        },
-                        {
-                            type: 'line',
-                            label: 'Numero di Serie',
-                            data: setsValues,
-                            borderColor: '#38bdf8',
-                            backgroundColor: '#38bdf8',
-                            borderWidth: 2,
-                            pointRadius: 3,
-                            tension: 0.2,
-                            yAxisID: 'ySets'
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    scales: {
-                        x: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } },
-                        yVolume: {
-                            type: 'linear',
-                            position: 'left',
-                            title: { display: true, text: 'Volume (kg)', color: '#facc15' },
-                            ticks: { color: '#facc15' },
-                            grid: { color: '#334155' }
-                        },
-                        ySets: {
-                            type: 'linear',
-                            position: 'right',
-                            title: { display: true, text: 'N° Serie', color: '#38bdf8' },
-                            ticks: { color: '#38bdf8' },
-                            grid: { drawOnChartArea: false }
-                        }
+                    if (ex.includes('press') || ex.includes('lento')) {
+                        rmData['Spalle (Press)'][date] = Math.max(rmData['Spalle (Press)'][date] || 0, estimated1RM);
                     }
-                }
-            });
-
-            // Grafico 2: Serie per Gruppo Muscolare
-            charts.muscles = new Chart(document.getElementById('muscleSetsChart'), {
-                type: 'bar',
-                data: {
-                    labels: Object.keys(muscleStats),
-                    datasets: [{
-                        label: 'Numero di Serie',
-                        data: Object.values(muscleStats),
-                        backgroundColor: '#2dd4bf',
-                        borderRadius: 6
-                    }]
-                },
-                options: {
-                    scales: {
-                        x: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } },
-                        y: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } }
-                    }
-                }
-            });
-
-            // Popola Tabella Registro Sessioni
-            const tbody = document.getElementById('workoutTableBody');
-            tbody.innerHTML = '';
-            [...sortedSessions].reverse().forEach(w => {
-                tbody.innerHTML += `<tr>
-                    <td style="color: var(--accent-blue); font-weight: bold;">${w.date}</td>
-                    <td>${w.title}</td>
-                    <td style="color: var(--accent-yellow); font-weight: bold;">${w.volume.toLocaleString('it-IT')} kg</td>
-                    <td>${w.sets} serie</td>
-                    <td>${w.reps} reps</td>
-                </tr>`;
-            });
-        }
-
-        document.addEventListener('DOMContentLoaded', async () => {
-            if (typeof renderStandpointBar === 'function') await renderStandpointBar();
-            await loadWorkoutData();
-        });
-    </script>
-</body>
-</html>
+                } else if (ex.includes('bicep') || ex.includes('curl') || ex.includes('bicipit')) {
+                    muscleStats['Bicipiti'] +=
