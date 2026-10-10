@@ -8,6 +8,69 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/app.js"></script>
+    <style>
+        /* Card Ingrandita per i Volumi */
+        .chart-card-full {
+            grid-column: 1 / -1;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            cursor: pointer;
+            transition: transform 0.2s, border-color 0.2s;
+        }
+        .chart-card-full:hover {
+            border-color: var(--accent-yellow);
+            transform: translateY(-2px);
+        }
+
+        /* Contenitori Grafici Ingranditi per Peso e Sonno */
+        .chart-container-medium {
+            position: relative;
+            height: 320px;
+            width: 100%;
+        }
+
+        /* Modal Popup Ingrandibile */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.92);
+            backdrop-filter: blur(6px);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .modal-overlay.active {
+            display: flex;
+        }
+        .modal-content {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            width: 95%;
+            max-width: 1200px;
+            height: 82vh;
+            padding: 25px;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 10px 35px rgba(0,0,0,0.6);
+        }
+        .modal-close {
+            position: absolute;
+            top: 15px; right: 20px;
+            font-size: 2rem;
+            color: var(--text-muted);
+            cursor: pointer;
+            border: none;
+            background: none;
+            line-height: 1;
+        }
+        .modal-close:hover { color: #ffffff; }
+    </style>
 </head>
 <body>
 
@@ -44,27 +107,31 @@
         <div class="kpi-grid" id="homeKpiContainer"></div>
 
         <div class="charts-grid">
-            <!-- GRAFICO VOLUME WORKOUT (A LARGHEZZA INTERA E CLICCABILE) -->
+            <!-- GRAFICO VOLUME WORKOUT (A LARGHEZZA INTERA) -->
             <div class="chart-card-full" onclick="openVolumeModal()">
-                <div class="chart-card-full-header">
-                    <h3 class="chart-card-full-title">🏋️‍♂️ Volume Allenamenti per Sessione (kg) & Trendline</h3>
-                    <span class="chart-card-full-badge">🔍 Clicca per ingrandire</span>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <h3 style="color: var(--accent-yellow); margin:0;">🏋️‍♂️ Volume Allenamenti per Sessione (kg) & Trendline</h3>
+                    <span style="font-size: 0.8rem; color: var(--text-muted); background: #1e293b; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border-color);">🔍 Clicca per ingrandire</span>
                 </div>
-                <div class="chart-container-large">
+                <div style="height: 380px; position: relative;">
                     <canvas id="homeWorkoutVolumeChart"></canvas>
                 </div>
             </div>
 
-            <!-- Grafico Peso & Massa Magra BIA -->
+            <!-- GRAFICO PESO & MASSA MAGRA (INGRANDITO) -->
             <div class="chart-card">
                 <h3 style="color: var(--accent-blue); margin-top:0;">Trend Peso & Massa Magra (BIA)</h3>
-                <canvas id="homeWeightChart"></canvas>
+                <div class="chart-container-medium">
+                    <canvas id="homeWeightChart"></canvas>
+                </div>
             </div>
 
-            <!-- Grafico Sonno & Recupero RingConn -->
+            <!-- GRAFICO SONNO & RECUPERO (INGRANDITO) -->
             <div class="chart-card">
                 <h3 style="color: var(--accent-pink); margin-top:0;">Trend Sonno & Recupero (RingConn)</h3>
-                <canvas id="homeSleepChart"></canvas>
+                <div class="chart-container-medium">
+                    <canvas id="homeSleepChart"></canvas>
+                </div>
             </div>
         </div>
     </div>
@@ -74,7 +141,7 @@
         <div class="modal-content" onclick="event.stopPropagation()">
             <button class="modal-close" onclick="closeVolumeModal()">&times;</button>
             <h3 style="color: var(--accent-yellow); margin-top:0;">🏋️‍♂️ Analisi Dettagliata Volumi per Sessione (kg)</h3>
-            <div class="modal-body">
+            <div style="flex: 1; position: relative; width: 100%; height: 100%; margin-top: 15px;">
                 <canvas id="modalVolumeChart"></canvas>
             </div>
         </div>
@@ -84,6 +151,7 @@
         let rawBia = [], rawRingconn = [], rawWorkouts = [];
         let currentFilter = 'all';
         let charts = {};
+        let currentWorkoutChartData = null;
 
         function setFilter(range) {
             currentFilter = range;
@@ -110,8 +178,9 @@
 
         function renderPage() {
             Object.values(charts).forEach(c => c.destroy());
+            charts = {};
 
-            // 1. KPI Principali (recupera gli ultimi valori BIA validi)
+            // 1. KPI Principali
             if (rawBia.length) {
                 const w = getLastValidMetric(rawBia, 'weight');
                 const lbm = getLastValidMetric(rawBia, 'lean_body_mass');
@@ -126,13 +195,13 @@
                 `;
             }
 
-            // 2. Filtraggio Dati in base al filtro temporale selezionato
+            // 2. Filtraggio Dati Corretto
             const filteredBia = filterDataByRange(rawBia, 'measurement_time', currentFilter);
             const filteredRc = filterDataByRange(rawRingconn, 'week_start', currentFilter);
             const filteredWkt = filterDataByRange(rawWorkouts, 'start_time', currentFilter);
 
             // -------------------------------------------------------------
-            // GRAFICO 1: Volume Allenamenti per Sessione (Home + Modal Popup)
+            // GRAFICO 1: Volume Allenamenti per Sessione
             // -------------------------------------------------------------
             if (filteredWkt.length) {
                 const sessionsMap = {};
@@ -147,7 +216,7 @@
                 const sessionVolumes = sessionDates.map(d => Math.round(sessionsMap[d]));
                 const trendVolume = calculateTrendline(sessionVolumes);
 
-                const chartDataConfig = {
+                currentWorkoutChartData = {
                     labels: sessionDates,
                     datasets: [
                         {
@@ -172,10 +241,9 @@
                     ]
                 };
 
-                // Rendering Grafico Card Principale
                 charts.volume = new Chart(document.getElementById('homeWorkoutVolumeChart'), {
                     type: 'bar',
-                    data: chartDataConfig,
+                    data: currentWorkoutChartData,
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
@@ -185,26 +253,10 @@
                         }
                     }
                 });
-
-                // Rendering Grafico nel Modal Popup Ingrandito
-                if (document.getElementById('modalVolumeChart')) {
-                    charts.modalVolume = new Chart(document.getElementById('modalVolumeChart'), {
-                        type: 'bar',
-                        data: chartDataConfig,
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            scales: {
-                                x: { ticks: { color: '#94a3b8', font: { size: 12 } }, grid: { color: '#334155' } },
-                                y: { ticks: { color: '#facc15', font: { size: 12 } }, grid: { color: '#334155' } }
-                            }
-                        }
-                    });
-                }
             }
 
             // -------------------------------------------------------------
-            // GRAFICO 2: Trend Peso & Massa Magra BIA
+            // GRAFICO 2: Trend Peso & Massa Magra BIA (INGRANDITO)
             // -------------------------------------------------------------
             if (filteredBia.length) {
                 const weights = filteredBia.map(d => d.weight);
@@ -219,12 +271,19 @@
                             { label: 'Trend Peso', data: trendWeight, borderColor: 'rgba(56, 189, 248, 0.4)', borderDash: [5, 5], pointRadius: 0, fill: false }
                         ]
                     },
-                    options: { responsive: true }
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } },
+                            y: { ticks: { color: '#38bdf8' }, grid: { color: '#334155' } }
+                        }
+                    }
                 });
             }
 
             // -------------------------------------------------------------
-            // GRAFICO 3: Trend Sonno & Recupero RingConn
+            // GRAFICO 3: Trend Sonno & Recupero RingConn (INGRANDITO)
             // -------------------------------------------------------------
             if (filteredRc.length) {
                 const sleepScores = filteredRc.map(r => r.sleep_score);
@@ -239,14 +298,40 @@
                             { label: 'Trend Sonno', data: trendSleep, borderColor: 'rgba(236, 72, 153, 0.4)', borderDash: [5, 5], pointRadius: 0, fill: false }
                         ]
                     },
-                    options: { responsive: true }
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } },
+                            y: { ticks: { color: '#ec4899' }, grid: { color: '#334155' } }
+                        }
+                    }
                 });
             }
         }
 
-        // Funzioni di apertura/chiusura Modal Popup
+        // FUNZIONI MODAL POPUP
         function openVolumeModal() {
-            document.getElementById('volumeModal').classList.add('active');
+            if (!currentWorkoutChartData) return;
+
+            const modal = document.getElementById('volumeModal');
+            modal.classList.add('active');
+
+            // Renderizza il grafico del Modal SOLO ORA che l'overlay è visibile
+            if (charts.modalVolume) charts.modalVolume.destroy();
+
+            charts.modalVolume = new Chart(document.getElementById('modalVolumeChart'), {
+                type: 'bar',
+                data: currentWorkoutChartData,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { ticks: { color: '#94a3b8', font: { size: 12 } }, grid: { color: '#334155' } },
+                        y: { ticks: { color: '#facc15', font: { size: 12 } }, grid: { color: '#334155' } }
+                    }
+                }
+            });
         }
 
         function closeVolumeModal(e) {
